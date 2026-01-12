@@ -1,6 +1,6 @@
 # EyeGuardian
 
-A desktop vision wellness app using FastAPI, Vue.js 3, and Electron.
+A desktop vision wellness app using FastAPI, Next.js, and Electron.
 
 ## Prerequisites
 
@@ -29,7 +29,7 @@ uvicorn main:app --reload --port 8000
 ```
 The WebSocket will be active at `ws://localhost:8000/ws`.
 
-### 2. Frontend & Desktop Shell (Vue + Electron)
+### 2. Frontend & Desktop Shell (Next.js + Electron)
 
 Open a **new** terminal in the root directory:
 
@@ -55,7 +55,7 @@ This will launch the Electron window displaying the Dashboard.
 ## Structure
 
 - `/backend`: Python FastAPI logic.
-- `/frontend`: Vue.js + Tailwind + Electron logic.
+- `/frontend`: Next.js + Tailwind + Electron logic.
   - `/electron`: Main process files.
-  - `/src`: Vue components.
+  - `/src`: Next.js components.
 
