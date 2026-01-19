@@ -3,56 +3,85 @@ import asyncio
 import json
 import random
 from typing import Dict
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+from engine.eye_processor import EyeGuardianEngine
 
 app = FastAPI()
-
-# Global state to store the latest health data
-current_health_state: Dict = {
-    "blink_rate": 0,
-    "distance_cm": 0,
-    "posture_score": 100,
-    "ambient_light": 0,
-    "overall_strain_index": 0
-}
-
-async def generate_health_data():
-    """
-    Background task to simulate real-time health metrics.
-    Updates the global state every 1 second.
-    """
-    global current_health_state
-    while True:
-        # Simulate realistic fluctuations
-        current_health_state = {
-            "blink_rate": random.randint(10, 25),  # Blinks per minute
-            "distance_cm": random.randint(30, 70), # Distance from screen
-            "posture_score": random.randint(50, 100), # 100 is best
-            "ambient_light": random.randint(200, 800), # Lux
-            # Strain index calculation simulation (weighted average mock)
-            "overall_strain_index": int(
-                (
-                    (100 - random.randint(50, 100)) * 0.3 + # Posture impact
-                    (random.randint(0, 100)) * 0.7        # Random stress
-                )
-            )
-        }
-        # Ensure strain index is 0-100
-        current_health_state["overall_strain_index"] = max(0, min(100, current_health_state["overall_strain_index"]))
-        
-        await asyncio.sleep(1)
-
+    
 @app.on_event("startup")
 async def startup_event():
-    # Start the data generation task
-    asyncio.create_task(generate_health_data())
+    print("EyeGuardian Backend Started")
 
+@app.websocket("/ws/health-stream")
+async def health_stream_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    
+    # Initialize Camera
+    # Note: cv2.VideoCapture(0) opens the default camera.
+    # On MacOS, this requires permissions.
+    cap = cv2.VideoCapture(0)
+    
+    if not cap.isOpened():
+        await websocket.send_json({"error": "Could not open camera"})
+        await websocket.close()
+        return
+
+    engine = EyeGuardianEngine()
+    
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                await websocket.send_json({"error": "Failed to read frame"})
+                break
+            
+            # optimize: flip frame
+            frame = cv2.flip(frame, 1)
+            
+            # Process frame
+            data = engine.process_frame(frame)
+            
+            # Every 10 minutes (or periodically), we could send a summary
+            # For now, just send real-time data
+            # Optionally check if we need to send a summary
+            # summary = engine.generate_mini_health_summary()
+            # data['summary'] = summary
+            
+            await websocket.send_json(data)
+            
+            # Control frame rate (approx 30 FPS)
+            await asyncio.sleep(0.033)
+            
+    except WebSocketDisconnect:
+        print("Client disconnected from health stream")
+    except Exception as e:
+        print(f"Error in health stream: {e}")
+    finally:
+        cap.release()
+        print("Camera released")
+
+# Keep existing /ws for backward compatibility if needed, or update it
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    # Mock data for non-camera testing
+    current_health_state: Dict = {
+        "blink_rate": 0, "distance_cm": 50, "posture_score": 100, 
+        "ambient_light": 500, "overall_strain_index": 0
+    }
     try:
         while True:
-            # Send the current state
+            current_health_state = {
+                "blink_rate": random.randint(10, 25), 
+                "distance_cm": random.randint(30, 70), 
+                "posture_score": random.randint(50, 100), 
+                "ambient_light": random.randint(200, 800), 
+                "overall_strain_index": random.randint(0, 100)
+            }
             await websocket.send_text(json.dumps(current_health_state))
-            await asyncio.sleep(1) # Send updates every second
+            await asyncio.sleep(1)
     except WebSocketDisconnect:
         print("Client disconnected")
