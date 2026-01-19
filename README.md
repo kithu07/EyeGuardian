@@ -4,7 +4,7 @@ A desktop vision wellness app using FastAPI, Next.js, and Electron.
 
 ## Prerequisites
 
-- [Python 3.9+](https://www.python.org/downloads/)
+- [Python 3.9+](https://www.python.org/downloads/) (Ideally 3.11.13)
 - [Node.js 18+](https://nodejs.org/)
 
 ## Setup & Running
