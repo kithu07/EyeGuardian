@@ -5,7 +5,54 @@ import RadialGauge from '@/components/RadialGauge';
 import StatCard from '@/components/StatCard';
 import LogPanel, { Log } from '@/components/LogPanel';
 import CameraPlaceholder from '@/components/CameraPlaceholder';
-// Removed unused icon imports
+
+// Detail sub-types
+interface BlinkDetails {
+  ear: number;
+  total_blinks: number;
+  incomplete_blinks: number;
+  is_dry: boolean;
+}
+
+interface DistanceDetails {
+  value_cm: number;
+  risk_score: number;
+  status: string;
+}
+
+interface LightDetails {
+  brightness: number;
+  level: string;
+  risk: number;
+}
+
+interface PostureDetails {
+  head_position: string;
+  overall: string;
+  pitch: number;
+  yaw: number;
+  roll: number;
+  risk: number;
+}
+
+interface RednessDetails {
+  score: number;
+  level: string;
+}
+
+interface RiskFusionDetails {
+  score: number;
+  level: string;
+}
+
+interface HealthDetails {
+  blink: BlinkDetails;
+  distance: DistanceDetails;
+  light: LightDetails;
+  posture: PostureDetails;
+  redness: RednessDetails;
+  risk_fusion: RiskFusionDetails;
+}
 
 // Types
 interface HealthState {
@@ -14,6 +61,9 @@ interface HealthState {
   posture_score: number;
   ambient_light: number;
   overall_strain_index: number;
+  redness: number;
+  camera_frame: string | null;
+  details: HealthDetails | null;
 }
 
 // Extend Window interface for Electron API
@@ -26,13 +76,15 @@ declare global {
 }
 
 export default function Home() {
-  // State
   const [healthState, setHealthState] = useState<HealthState>({
     blink_rate: 0,
     distance_cm: 0,
     posture_score: 100,
     ambient_light: 0,
-    overall_strain_index: 0
+    overall_strain_index: 0,
+    redness: 0,
+    camera_frame: null,
+    details: null,
   });
 
   const [logs, setLogs] = useState<Log[]>([]);
@@ -71,7 +123,7 @@ export default function Home() {
   // WebSocket Logic
   useEffect(() => {
     const connectWebSocket = () => {
-      const socket = new WebSocket('ws://localhost:8000/ws');
+      const socket = new WebSocket('ws://localhost:8000/ws/health-stream');
       socketRef.current = socket;
 
       socket.onopen = () => {
@@ -107,6 +159,8 @@ export default function Home() {
     };
   }, [addLog, handleHighStrain]);
 
+  const d = healthState.details;
+
   return (
     <main className="h-screen w-screen p-6 grid grid-cols-12 grid-rows-6 gap-6 max-h-screen overflow-hidden bg-background text-foreground">
       {/* Header (Top) */}
@@ -126,27 +180,56 @@ export default function Home() {
       </div>
 
       {/* Left Column: Gauge & Stats */}
-      <div className="col-span-4 row-span-5 flex flex-col gap-6">
+      <div className="col-span-4 row-span-5 flex flex-col gap-6 overflow-y-auto">
         {/* Main Gauge */}
-        <div className="bg-gradient-to-b from-slate-800/40 to-slate-900/40 border border-slate-700/50 rounded-2xl p-6 flex items-center justify-center flex-1 shadow-2xl relative overflow-hidden">
+        <div className="bg-gradient-to-b from-slate-800/40 to-slate-900/40 border border-slate-700/50 rounded-2xl p-6 flex items-center justify-center flex-shrink-0 shadow-2xl relative overflow-hidden" style={{ minHeight: '260px' }}>
           <div className="absolute inset-0 bg-primary/5 blur-3xl rounded-full"></div>
           <RadialGauge value={healthState.overall_strain_index} />
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 gap-4">
-          <StatCard label="Blink Rate" value={healthState.blink_rate} unit="bpm" icon={
-            <svg className="w-6 h-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-          } />
-          <StatCard label="Distance" value={healthState.distance_cm} unit="cm" icon={
-            <svg className="w-6 h-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-          } />
-          <StatCard label="Amb. Light" value={healthState.ambient_light} unit="lx" icon={
-            <svg className="w-6 h-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-          } />
-          <StatCard label="Posture" value={healthState.posture_score} unit="%" icon={
-            <svg className="w-6 h-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-          } />
+        <div className="grid grid-cols-2 gap-4 flex-shrink-0">
+          <StatCard label="Blink Rate" value={healthState.blink_rate} unit="bpm"
+            details={d ? [
+              { label: "EAR", value: d.blink.ear },
+              { label: "Total Blinks", value: d.blink.total_blinks },
+              { label: "Incomplete", value: d.blink.incomplete_blinks },
+              { label: "Dry Eyes", value: d.blink.is_dry },
+              { label: "Redness", value: d.redness.score },
+              { label: "Redness Level", value: d.redness.level },
+            ] : undefined}
+            icon={
+              <svg className="w-6 h-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+            } />
+          <StatCard label="Distance" value={healthState.distance_cm} unit="cm"
+            details={d ? [
+              { label: "Status", value: d.distance.status },
+              { label: "Risk Score", value: d.distance.risk_score },
+            ] : undefined}
+            icon={
+              <svg className="w-6 h-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+            } />
+          <StatCard label="Amb. Light" value={healthState.ambient_light} unit="lx"
+            details={d ? [
+              { label: "Brightness", value: d.light.brightness },
+              { label: "Level", value: d.light.level },
+              { label: "Risk", value: d.light.risk },
+            ] : undefined}
+            icon={
+              <svg className="w-6 h-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+            } />
+          <StatCard label="Posture" value={healthState.posture_score} unit="%"
+            details={d ? [
+              { label: "Position", value: d.posture.head_position },
+              { label: "Overall", value: d.posture.overall },
+              { label: "Pitch", value: `${d.posture.pitch}°` },
+              { label: "Yaw", value: `${d.posture.yaw}°` },
+              { label: "Roll", value: `${d.posture.roll}°` },
+              { label: "Risk", value: d.posture.risk },
+            ] : undefined}
+            icon={
+              <svg className="w-6 h-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            } />
         </div>
       </div>
 
@@ -154,7 +237,7 @@ export default function Home() {
       <div className="col-span-8 row-span-5 flex flex-col gap-6">
         {/* Camera Preview */}
         <div className="flex-1 min-h-0">
-          <CameraPlaceholder className="h-full w-full" />
+          <CameraPlaceholder className="h-full w-full" frameSrc={healthState.camera_frame} />
         </div>
 
         {/* Log Panel */}
