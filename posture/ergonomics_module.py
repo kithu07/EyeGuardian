@@ -77,7 +77,7 @@ while True:
     overall_posture = "Upright"
     posture_risk = 0.0
     distance_risk = 0.0
-    distance_valid = False   # ✅ reset every frame
+    distance_valid = False  
 
     # ---------------------------------
     # Facial Landmarks & Distance
@@ -86,7 +86,6 @@ while True:
         for face_landmarks in result.face_landmarks:
             h, w, _ = frame.shape
 
-            # Draw landmarks
             for lm in face_landmarks:
                 x = int(lm.x * w)
                 y = int(lm.y * h)
@@ -139,12 +138,10 @@ while True:
         elif abs(pitch) > 10 or abs(yaw) > 15 or abs(roll) > 10:
             posture_risk = 0.5
 
-        # ✅ Correct combined logic
         if distance_valid and pitch > 12 and distance_cm < 50:
             overall_posture = "Leaning Forward"
             posture_risk = max(posture_risk, 0.7)
 
-        # Display
         cv2.putText(frame, f"Posture: {posture}", (30, 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
