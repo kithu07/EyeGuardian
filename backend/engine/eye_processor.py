@@ -168,14 +168,9 @@ class EyeGuardianEngine:
             self.redness_history.append(avg_redness)
             data['redness'] = float(avg_redness)
             
-            # 3. Dry Eyes Logic
-            # Metric: if blink rate per minute < 12 (standard is ~15-20)
-            # Calculate Rate over last 60 seconds
             now = time.time()
             recent_blinks = sum(1 for t in self.blink_timestamps if now - t <= 60)
-            # If we don't have enough history (e.g. startup), assume False
-            # Or assume dry if 0 blinks in 10 seconds?
-            # Let's stick to the 1 minute rate.
+
             if recent_blinks < 12:
                 data['is_dry'] = True
             
@@ -190,13 +185,10 @@ class EyeGuardianEngine:
                      otherwise uses internal history.
         """
         now = time.time()
-        # Analyze last 10 minutes (600 seconds)
         ten_min_ago = now - 600
         
         valid_blinks = [t for t in self.blink_timestamps if t >= ten_min_ago]
-        blink_rate_10m = len(valid_blinks) / 10.0 if len(valid_blinks) > 0 else 0
-        
-        # Average redness over history (assuming history covers roughly relevant time)
+        blink_rate_10m = len(valid_blinks) / 10.0 if len(valid_blinks) > 0 els
         avg_redness = 0.0
         if self.redness_history:
             avg_redness = sum(self.redness_history) / len(self.redness_history)
@@ -211,9 +203,6 @@ class EyeGuardianEngine:
         else:
             summary_messages.append("Blink rate is good.")
             
-        # Redness analysis (Thresholds need calibration, assuming 0.6 is high for R/(G+B))
-        # Normal R/(G+B) is around 0.33 to 0.5. 
-        # If Red is 200, G 100, B 100 -> 200/200 = 1.0
         if avg_redness > 0.7:
              summary_messages.append("Detected significant eye redness. Consider resting your eyes.")
              
