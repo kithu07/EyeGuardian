@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on tcp:3000 && NODE_ENV=development electron .\"",
+    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on tcp:3000 && set \\\"NODE_ENV=development\\\" && electron .\"",
     "electron:build": "next build && electron ."
   },
   "dependencies": {
