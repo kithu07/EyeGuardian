@@ -112,6 +112,9 @@ export default function Home() {
   const lastNotificationTime = useRef(0);
   const FAILURE_SUPPRESSION_MS = 5 * 60 * 1000; // don't re-trigger for failures within 5 minutes
 
+  // track whether we've received a real data packet
+  const gotData = useRef(false);
+
   // Helpers
   const addLog = useCallback((message: string, type: 'info' | 'warning' | 'danger' = 'info') => {
     const time = new Date().toLocaleTimeString();
@@ -157,34 +160,43 @@ export default function Home() {
           const data = JSON.parse(event.data);
           setHealthState(data);
 
-          // run diagnostics on every update
-          const failures = evaluateHealthState(data);
-          const now = Date.now();
-
-          // critical strain check (modal handled in handleHighStrain)
-          if (data.overall_strain_index > 80) {
-            handleHighStrain(data.overall_strain_index);
+          // ignore the very first message if it's placeholder/initial state
+          if (!gotData.current) {
+            gotData.current = true;
           }
 
-          // determine if break reminder should be shown
-          const timeExceeded = now >= nextReminder.current;
-          const recentUser = now - lastUserAction.current < FAILURE_SUPPRESSION_MS;
+          // run diagnostics on every update only after first real data
+          // also enforce a short startup delay so alerts don't fire immediately
+          const now = Date.now();
+          const startupDelayPassed = now - sessionStart.current >= 60 * 1000; // 1 minute
+          if (gotData.current && startupDelayPassed) {
+            const failures = evaluateHealthState(data);
 
-          // Only show for failures if user hasn't recently dismissed/acknowledged
-          const shouldShowForFailure = failures.length > 0 && !recentUser;
+            // critical strain check (modal handled in handleHighStrain)
+            if (data.overall_strain_index > 80) {
+              handleHighStrain(data.overall_strain_index);
+            }
 
-          if ((timeExceeded || shouldShowForFailure) && !showBreakReminderRef.current) {
-            // generate reasons and recommendations
-            const reasons = failures.map(f => f.message);
-            const recs = getRecommendations(failures);
-            setBreakReasons(reasons);
-            setBreakRecs(recs);
-            setShowBreakReminder(true);
-            showBreakReminderRef.current = true;
-            // throttle native notifications
-            if (now - lastNotificationTime.current > 5000) {
-              alertBreakReminder();
-              lastNotificationTime.current = now;
+            // determine if break reminder should be shown
+            const timeExceeded = now >= nextReminder.current;
+            const recentUser = now - lastUserAction.current < FAILURE_SUPPRESSION_MS;
+
+            // Only show for failures if user hasn't recently dismissed/acknowledged
+            const shouldShowForFailure = failures.length > 0 && !recentUser;
+
+            if ((timeExceeded || shouldShowForFailure) && !showBreakReminderRef.current) {
+              // generate reasons and recommendations
+              const reasons = failures.map(f => f.message);
+              const recs = getRecommendations(failures);
+              setBreakReasons(reasons);
+              setBreakRecs(recs);
+              setShowBreakReminder(true);
+              showBreakReminderRef.current = true;
+              // throttle native notifications
+              if (now - lastNotificationTime.current > 5000) {
+                alertBreakReminder();
+                lastNotificationTime.current = now;
+              }
             }
           }
         } catch (e) {
