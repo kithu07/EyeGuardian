@@ -11,6 +11,10 @@ A desktop vision wellness app using FastAPI, Next.js, and Electron.
 
 You need to run the Backend and the Frontend (Electron) simultaneously.
 
+> **Windows users:** if you encounter an error like `'NODE_ENV' is not recognized as an internal or external command`
+> when running `npm run electron:dev`, open `frontend/package.json` and ensure the script uses
+> `set "NODE_ENV=development"` (the repository already includes the correct form).
+
 ### 1. Backend (FastAPI)
 
 Open a terminal in the root directory:
