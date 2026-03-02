@@ -1,4 +1,5 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 import asyncio
 import json
 import random
@@ -7,6 +8,7 @@ import time
 import os
 import sys
 from typing import Dict
+from datetime import date
 
 try:
     import cv2
@@ -23,16 +25,27 @@ sys.path.insert(0, os.path.join(PROJECT_DIR, "light"))
 
 from ambient_light import AmbientLightAnalyzer
 from risk_fusion import RiskFusionEngine
+from database import EyeGuardianDB
 
 POSTURE_MODEL_PATH = os.path.join(PROJECT_DIR, "posture", "face_landmarker.task")
 
+# How often (seconds) to persist a snapshot row – keeps DB lean
+SNAPSHOT_INTERVAL = 30
+
 app = FastAPI()
+db = EyeGuardianDB()          # single DB instance shared across requests
 
 @app.on_event("startup")
 async def startup_event():
     print("EyeGuardian Backend Started")
     print(f"Posture model path: {POSTURE_MODEL_PATH}")
     print(f"Model exists: {os.path.exists(POSTURE_MODEL_PATH)}")
+    print(f"Database: {db.db_path}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    db.close()
+    print("Database connection closed")
 
 @app.websocket("/ws/health-stream")
 async def health_stream_endpoint(websocket: WebSocket):
@@ -53,6 +66,11 @@ async def health_stream_endpoint(websocket: WebSocket):
     eye_engine = EyeGuardianEngine()
     light_analyzer = AmbientLightAnalyzer()
     risk_engine = RiskFusionEngine()
+
+    # Start a DB session
+    session_id = db.start_session()
+    last_snapshot_time = 0.0
+    print(f"DB session {session_id} started")
 
     posture_analyzer = None
     if os.path.exists(POSTURE_MODEL_PATH):
@@ -188,6 +206,45 @@ async def health_stream_endpoint(websocket: WebSocket):
             }
 
             await websocket.send_json(payload)
+
+            # ---- persist to DB every SNAPSHOT_INTERVAL seconds ----
+            now_db = time.time()
+            if now_db - last_snapshot_time >= SNAPSHOT_INTERVAL:
+                last_snapshot_time = now_db
+                try:
+                    # Save snapshot (strip camera_frame to keep DB small)
+                    snap_payload = {k: v for k, v in payload.items() if k != "camera_frame"}
+                    db.insert_snapshot(session_id, snap_payload)
+
+                    # Generate alerts for concerning metrics
+                    if strain_index >= 70:
+                        db.insert_alert(session_id, "high_strain", "danger",
+                                        f"Strain index critically high: {strain_index}%")
+                    elif strain_index >= 50:
+                        db.insert_alert(session_id, "elevated_strain", "warning",
+                                        f"Strain index elevated: {strain_index}%")
+
+                    if eye_data.get("is_dry", False):
+                        db.insert_alert(session_id, "dry_eyes", "warning",
+                                        f"Low blink rate ({recent_blinks}/min) – eyes may be dry")
+
+                    if posture_data["posture_risk"] >= 1.0:
+                        db.insert_alert(session_id, "bad_posture", "danger",
+                                        f"Poor posture detected: {posture_data['head_position']}")
+                    elif posture_data["posture_risk"] >= 0.5:
+                        db.insert_alert(session_id, "bad_posture", "warning",
+                                        f"Posture needs attention: {posture_data['head_position']}")
+
+                    if posture_data["distance_risk"] >= 1.0:
+                        db.insert_alert(session_id, "too_close", "warning",
+                                        f"Too close to screen: {posture_data['distance_cm']} cm")
+
+                    if light_data["risk"] >= 2:
+                        db.insert_alert(session_id, "bad_lighting", "warning",
+                                        f"Lighting is {light_data['level']} (brightness {light_data['brightness']:.0f})")
+                except Exception as db_err:
+                    print(f"[DB] Error saving snapshot/alert: {db_err}")
+
             await asyncio.sleep(0.066)  # ~15 FPS
 
     except WebSocketDisconnect:
@@ -198,6 +255,12 @@ async def health_stream_endpoint(websocket: WebSocket):
         traceback.print_exc()
     finally:
         cap.release()
+        # Close the DB session
+        try:
+            db.end_session(session_id)
+            print(f"DB session {session_id} ended")
+        except Exception:
+            pass
         print("Camera released")
 
 
@@ -265,3 +328,81 @@ async def websocket_endpoint(websocket: WebSocket):
             await asyncio.sleep(1)
     except WebSocketDisconnect:
         print("Client disconnected")
+
+# ---------------------------------------------------------------------------
+# REST API – query stored data (for charts, AI analysis, etc.)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/sessions")
+async def api_sessions(limit: int = 20):
+    """Return recent monitoring sessions."""
+    return db.get_sessions(limit)
+
+
+@app.get("/api/sessions/{session_id}/snapshots")
+async def api_session_snapshots(session_id: int, limit: int = 500):
+    """Return snapshots for a specific session."""
+    return db.get_snapshots(session_id=session_id, limit=limit)
+
+
+@app.get("/api/sessions/{session_id}/alerts")
+async def api_session_alerts(session_id: int, limit: int = 100):
+    """Return alerts for a specific session."""
+    return db.get_alerts(session_id=session_id, limit=limit)
+
+
+@app.get("/api/snapshots")
+async def api_snapshots(limit: int = 500):
+    """Return recent snapshots across all sessions."""
+    return db.get_snapshots(limit=limit)
+
+
+@app.get("/api/alerts")
+async def api_alerts(limit: int = 100):
+    """Return recent alerts across all sessions."""
+    return db.get_alerts(limit=limit)
+
+
+@app.get("/api/daily-summaries")
+async def api_daily_summaries(days: int = 30):
+    """Return daily summary data for charting."""
+    return db.get_daily_summaries(days)
+
+
+@app.get("/api/daily-summaries/{iso_date}")
+async def api_daily_summary(iso_date: str):
+    """Return summary for a specific date (YYYY-MM-DD)."""
+    summary = db.get_daily_summary(iso_date)
+    if summary is None:
+        return JSONResponse(status_code=404, content={"detail": "No data for this date"})
+    return summary
+
+
+@app.get("/api/weekly-summaries")
+async def api_weekly_summaries(weeks: int = 12):
+    """Return weekly summary data for charting (default: last 12 weeks)."""
+    return db.get_weekly_summaries(weeks)
+
+
+@app.get("/api/weekly-summaries/{year}/{week}")
+async def api_weekly_summary(year: int, week: int):
+    """Return summary for a specific ISO week."""
+    summary = db.get_weekly_summary(year, week)
+    if summary is None:
+        return JSONResponse(status_code=404, content={"detail": "No data for this week"})
+    return summary
+
+
+@app.get("/api/monthly-summaries")
+async def api_monthly_summaries(months: int = 12):
+    """Return monthly summary data for charting (default: last 12 months)."""
+    return db.get_monthly_summaries(months)
+
+
+@app.get("/api/monthly-summaries/{year}/{month}")
+async def api_monthly_summary(year: int, month: int):
+    """Return summary for a specific month."""
+    summary = db.get_monthly_summary(year, month)
+    if summary is None:
+        return JSONResponse(status_code=404, content={"detail": "No data for this month"})
+    return summary

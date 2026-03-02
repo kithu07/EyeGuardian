@@ -188,7 +188,7 @@ class EyeGuardianEngine:
         ten_min_ago = now - 600
         
         valid_blinks = [t for t in self.blink_timestamps if t >= ten_min_ago]
-        blink_rate_10m = len(valid_blinks) / 10.0 if len(valid_blinks) > 0 els
+        blink_rate_10m = len(valid_blinks) / 10.0 if len(valid_blinks) > 0 else 0
         avg_redness = 0.0
         if self.redness_history:
             avg_redness = sum(self.redness_history) / len(self.redness_history)
