@@ -1,13 +1,12 @@
 {
-  "timestamp": 1772428694.332343,
+  "timestamp": 1772429271.9577448,
   "insights": {
-    "summary": "Most critical issue: Eye Strain Index exceeds 50% Current eye health: At risk of ocular fatigue Recommended action: Implement measures to reduce screen time and improve workplace ergonomics",
-    "improvements": "Eye strain index: Reduce eye strain by 2.7% (48.5% to 45.8%) Blink rate: Increase blink rate to 15 blinks/min (up from 13.2 blinks/min) Screen distance: Maintain screen distance within healthy range (50-70 cm) Posture score: Improve posture score by 12.5% (72.5% to 85%) Ambient brightness: Maintain ambient brightness within a healthy range (100-180)",
+    "summary": "Based on your EyeGuardian app data, your eye health indicates moderate to high risk for eye strain and poor posture. Your Eye Strain Index of 48.5% is above the healthy range, and your blink rate of 13.2 blinks/min is below the recommended 15-20 blinks/min. Additionally, your posture score of 72.5% falls short of the healthy threshold of 85%.",
+    "improvements": "To restore your eye health, you need to reduce eye strain, practice good posture, and maintain a healthy blink rate.",
     "tips": [
-      "Adopt the 20-20-20 rule: Every 20 minutes, look away from screen and focus on something 20 feet away for 20 seconds.",
-      "Position your monitor to ensure your head is in line with the top third of the screen.",
-      "Limit screen time and use eye care software to track and remind you to take regular breaks.",
-      "Apply the 50-50-10 rule: Allocate 50% of your space for a comfortable workspace, 50% for digital equipment, and 10% for non-screen activities."
+      "Maintain a screen distance of 60-70 cm (23.6-27.6 inches) to reduce eye strain, as excessive proximity has been associated with increased risk of myopia (American Academy of Ophthalmology, 2020).",
+      "Follow the 20-20-20 rule: every 20 minutes, look away from your screen and focus on something 20 feet away for 20 seconds to reduce eye strain and promote blinking (American Optometric Association, 2020).",
+      "Adjust your ambient lighting to an acceptable range of 100-180 lux, as exposure to extreme brightness has been linked to eye fatigue and strain (International Commission on Illumination, 2018)."
     ]
   }
 }

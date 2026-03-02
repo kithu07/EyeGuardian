@@ -39,7 +39,7 @@ POSTURE_MODEL_PATH = os.path.join(PROJECT_DIR, "posture", "face_landmarker.task"
 SNAPSHOT_INTERVAL = 30
 
 app = FastAPI()
-   
+    
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,

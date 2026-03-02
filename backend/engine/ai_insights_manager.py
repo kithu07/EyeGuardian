@@ -50,7 +50,10 @@ class AIInsightsManager:
             provide a concise summary of their eye health, suggest what they need to improve, 
             and provide 3-4 actionable tips to restore their eye health.
 
-            WEEKLY AVERAGES:
+            CRITICAL: You MUST cite the specific CURRENT METRICS in your summary to prove this is data-backed.
+            For example: "Your blink rate of {w.get('avg_blink_rate')} bpm is below the healthy range..."
+
+            USER METRICS (WEEKLY AVERAGES):
             - Eye Strain Index: {w.get('avg_strain_index')}%
             - Blink Rate: {w.get('avg_blink_rate')} blinks/min (Healthy: 15-20)
             - Screen Distance: {w.get('avg_distance_cm')} cm (Healthy: 50-70)
@@ -68,10 +71,10 @@ class AIInsightsManager:
             - Monthly Alert Count: {m.get('alert_count')}
 
             Analysis requirements:
-            1. Identify the most critical issue from the numbers.
-            2. Compare current values with healthy targets provided.
-            3. Keep the tone professional, encouraging, and scientific.
-            4. Use bullet points for the 'tips' section.
+            1. Citations: Explicitly mention at least 2 current numbers from the metrics above in your summary.
+            2. Formatting: The "summary" and "improvements" fields MUST be plain strings, NOT objects.
+            3. Tone: Professional, encouraging, and scientific.
+            4. Tips: Provide 3-4 clear, actionable bullet points.
 
             Respond ONLY with a valid JSON object with keys: "summary", "improvements", "tips".
             """

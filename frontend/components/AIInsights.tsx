@@ -59,32 +59,53 @@ const AIInsights = () => {
             </div>
 
             {loading && !insights ? (
-                <div className="flex justify-center items-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <div className="flex flex-col justify-center items-center py-12 space-y-4">
+                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+                    <p className="text-slate-400 text-sm animate-pulse">Analyzing your eye health data...</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-700">
-                    <div className="space-y-4">
-                        <div>
-                            <h3 className="text-primary font-semibold text-sm uppercase tracking-wider mb-2">Usage Summary</h3>
-                            <div className="text-slate-200 leading-relaxed text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                    <div className="space-y-6">
+                        <div className="bg-slate-800/30 rounded-xl p-4 border border-slate-700/30">
+                            <h3 className="text-primary font-bold text-xs uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+                                Usage Analysis
+                            </h3>
+                            <div className="text-slate-200 leading-relaxed text-[0.95rem] font-medium">
                                 {typeof insights?.summary === 'string' ? insights.summary : JSON.stringify(insights?.summary)}
                             </div>
                         </div>
-                        <div>
-                            <h3 className="text-accent font-semibold text-sm uppercase tracking-wider mb-2">Areas for Improvement</h3>
-                            <div className="text-slate-200 leading-relaxed text-sm">
+
+                        <div className="bg-slate-800/30 rounded-xl p-4 border border-slate-700/30">
+                            <h3 className="text-accent font-bold text-xs uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-accent"></span>
+                                Precision Improvements
+                            </h3>
+                            <div className="text-slate-300 leading-relaxed text-sm">
                                 {typeof insights?.improvements === 'string' ? insights.improvements : JSON.stringify(insights?.improvements)}
                             </div>
                         </div>
                     </div>
-                    <div className="bg-slate-900/40 rounded-xl p-4 border border-slate-700/30">
-                        <h3 className="text-green-400 font-semibold text-sm uppercase tracking-wider mb-3">Actionable Tips</h3>
-                        <ul className="space-y-3">
+
+                    <div className="bg-gradient-to-br from-slate-900/60 to-slate-800/40 rounded-2xl p-6 border border-slate-700/50 shadow-inner relative group">
+                        <div className="absolute -top-3 left-6 px-3 py-1 bg-green-500/20 border border-green-500/30 rounded-full">
+                            <h3 className="text-green-400 font-bold text-[10px] uppercase tracking-widest flex items-center gap-1.5">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+                                </svg>
+                                Expert Recommendations
+                            </h3>
+                        </div>
+
+                        <ul className="space-y-4 mt-2">
                             {insights?.tips?.map((tip, index) => (
-                                <li key={index} className="flex gap-3 text-slate-300 text-sm italic">
-                                    <span className="text-green-500 font-bold">•</span>
-                                    {typeof tip === 'string' ? tip : JSON.stringify(tip)}
+                                <li key={index} className="flex gap-4 group/item">
+                                    <div className="mt-1 w-5 h-5 rounded-full bg-green-500/10 flex items-center justify-center flex-shrink-0 group-hover/item:bg-green-500/20 transition-colors">
+                                        <span className="text-green-500 text-[10px] font-black">{index + 1}</span>
+                                    </div>
+                                    <p className="text-slate-300 text-sm leading-relaxed group-hover/item:text-white transition-colors">
+                                        {typeof tip === 'string' ? tip : JSON.stringify(tip)}
+                                    </p>
                                 </li>
                             ))}
                         </ul>
