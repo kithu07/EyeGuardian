@@ -1,7 +1,12 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import json
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 import random
 import base64
 import time
@@ -26,6 +31,7 @@ sys.path.insert(0, os.path.join(PROJECT_DIR, "light"))
 from ambient_light import AmbientLightAnalyzer
 from risk_fusion import RiskFusionEngine
 from database import EyeGuardianDB
+from engine.ai_insights_manager import AIInsightsManager
 
 POSTURE_MODEL_PATH = os.path.join(PROJECT_DIR, "posture", "face_landmarker.task")
 
@@ -33,7 +39,21 @@ POSTURE_MODEL_PATH = os.path.join(PROJECT_DIR, "posture", "face_landmarker.task"
 SNAPSHOT_INTERVAL = 30
 
 app = FastAPI()
+   
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 db = EyeGuardianDB()          # single DB instance shared across requests
+insights_manager = AIInsightsManager(
+    api_key=os.environ.get("GROQ_API_KEY"),
+    cache_path=os.path.join(BASE_DIR, "ai_insights_cache.json"),
+    dummy_data_path=os.path.join(BASE_DIR, "data", "dummy_insights_data.json")
+)
 
 @app.on_event("startup")
 async def startup_event():
@@ -406,3 +426,13 @@ async def api_monthly_summary(year: int, month: int):
     if summary is None:
         return JSONResponse(status_code=404, content={"detail": "No data for this month"})
     return summary
+
+@app.get("/api/ai-insights")
+async def get_ai_insights():
+    """Return cached or newly generated AI insights."""
+    return insights_manager.get_insights()
+
+@app.post("/api/ai-insights/refresh")
+async def refresh_ai_insights():
+    """Manually trigger a fresh AI insight generation."""
+    return insights_manager.get_insights(force_refresh=True)

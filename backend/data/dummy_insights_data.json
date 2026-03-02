@@ -1,0 +1,26 @@
+{
+    "weekly_stats": {
+        "avg_strain_index": 48.5,
+        "avg_blink_rate": 13.2,
+        "avg_distance_cm": 42.0,
+        "avg_posture_score": 72.5,
+        "avg_brightness": 145.0,
+        "avg_redness": 0.65,
+        "total_session_minutes": 2450.0,
+        "alert_count": 18,
+        "dry_eye_minutes": 45.0,
+        "bad_posture_minutes": 120.0
+    },
+    "monthly_stats": {
+        "avg_strain_index": 51.2,
+        "avg_blink_rate": 12.8,
+        "avg_distance_cm": 40.5,
+        "avg_posture_score": 68.0,
+        "avg_brightness": 138.0,
+        "avg_redness": 0.72,
+        "total_session_minutes": 9800.0,
+        "alert_count": 85,
+        "dry_eye_minutes": 210.0,
+        "bad_posture_minutes": 540.0
+    }
+}
