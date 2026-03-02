@@ -7,6 +7,17 @@ import LogPanel, { Log } from '@/components/LogPanel';
 import CameraPlaceholder from '@/components/CameraPlaceholder';
 import AIInsights from '@/components/AIInsights';
 
+// new components & helpers for modals and alerts
+import BreakReminderModal from '@/components/BreakReminderModal';
+import StrainAlertModal from '@/components/StrainAlertModal';
+import { evaluateHealthState, HealthFailure } from '@/utils/healthMetricsMonitor';
+import { getRecommendations } from '@/utils/breakRecommendations';
+import {
+  alertHighStrain,
+  alertBreakReminder,
+  sendAppLog,
+} from '@/utils/notificationService';
+
 // Detail sub-types
 interface BlinkDetails {
   ear: number;
@@ -67,14 +78,7 @@ interface HealthState {
   details: HealthDetails | null;
 }
 
-// Extend Window interface for Electron API
-declare global {
-  interface Window {
-    electronAPI?: {
-      sendNotification: (title: string, body: string) => void;
-    };
-  }
-}
+// Electron API types are declared in ../types/electron.d.ts
 
 export default function Home() {
   const [healthState, setHealthState] = useState<HealthState>({
@@ -89,9 +93,24 @@ export default function Home() {
   });
 
   const [logs, setLogs] = useState<Log[]>([]);
+
+  // alert / break modal states
+  const [showBreakReminder, setShowBreakReminder] = useState(false);
+  const [breakReasons, setBreakReasons] = useState<string[]>([]);
+  const [breakRecs, setBreakRecs] = useState<string[]>([]);
+  const [showStrainAlert, setShowStrainAlert] = useState(false);
+  const [criticalStrainLevel, setCriticalStrainLevel] = useState(0);
+
+  // session tracking
+  const sessionStart = useRef<number>(Date.now());
+  const nextReminder = useRef<number>(sessionStart.current + 60 * 60 * 1000); // 1h later
+  const remindLaterTimeout = useRef<number | null>(null);
+  const lastUserAction = useRef<number>(0); // time of last user acknowledgement/postpone
+  const showBreakReminderRef = useRef<boolean>(false);
   const socketRef = useRef<WebSocket | null>(null);
   const logIdCounter = useRef(0);
   const lastNotificationTime = useRef(0);
+  const FAILURE_SUPPRESSION_MS = 5 * 60 * 1000; // don't re-trigger for failures within 5 minutes
 
   // Helpers
   const addLog = useCallback((message: string, type: 'info' | 'warning' | 'danger' = 'info') => {
@@ -102,6 +121,7 @@ export default function Home() {
       if (newLogs.length > 5) newLogs.pop();
       return newLogs;
     });
+    sendAppLog(message, type, (m, t) => { /* duplicate to logs already */ });
   }, []);
 
   const handleHighStrain = useCallback((level: number) => {
@@ -109,19 +129,20 @@ export default function Home() {
     // Throttle notifications/logs (every 5 seconds)
     if (now - lastNotificationTime.current > 5000) {
       addLog(`High Eye Strain Detected: ${level}/100`, 'danger');
-
-      // Trigger Electron Notification (defensive check)
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        window.electronAPI.sendNotification('Eye Health Alert', `Strain Level Critical: ${level}. Take a break!`);
-      } else {
-        console.log("Electron API not active (Browser Mode)");
-      }
-
+      alertHighStrain(level);
+      setCriticalStrainLevel(level);
+      setShowStrainAlert(true);
+      lastUserAction.current = now;
       lastNotificationTime.current = now;
     }
   }, [addLog]);
 
   // WebSocket Logic
+  useEffect(() => {
+    // keep ref in sync with state so websocket handler sees latest
+    showBreakReminderRef.current = showBreakReminder;
+  }, [showBreakReminder]);
+
   useEffect(() => {
     const connectWebSocket = () => {
       const socket = new WebSocket('ws://localhost:8000/ws/health-stream');
@@ -136,9 +157,35 @@ export default function Home() {
           const data = JSON.parse(event.data);
           setHealthState(data);
 
-          // Check for alerts
+          // run diagnostics on every update
+          const failures = evaluateHealthState(data);
+          const now = Date.now();
+
+          // critical strain check (modal handled in handleHighStrain)
           if (data.overall_strain_index > 80) {
             handleHighStrain(data.overall_strain_index);
+          }
+
+          // determine if break reminder should be shown
+          const timeExceeded = now >= nextReminder.current;
+          const recentUser = now - lastUserAction.current < FAILURE_SUPPRESSION_MS;
+
+          // Only show for failures if user hasn't recently dismissed/acknowledged
+          const shouldShowForFailure = failures.length > 0 && !recentUser;
+
+          if ((timeExceeded || shouldShowForFailure) && !showBreakReminderRef.current) {
+            // generate reasons and recommendations
+            const reasons = failures.map(f => f.message);
+            const recs = getRecommendations(failures);
+            setBreakReasons(reasons);
+            setBreakRecs(recs);
+            setShowBreakReminder(true);
+            showBreakReminderRef.current = true;
+            // throttle native notifications
+            if (now - lastNotificationTime.current > 5000) {
+              alertBreakReminder();
+              lastNotificationTime.current = now;
+            }
           }
         } catch (e) {
           console.error("Error parsing WebSocket message:", e);
@@ -159,6 +206,44 @@ export default function Home() {
       }
     };
   }, [addLog, handleHighStrain]);
+
+  // --- modal action handlers ---
+  const handleStartBreak = useCallback(() => {
+    addLog('User started break', 'info');
+    setShowBreakReminder(false);
+    // set next reminder hour ahead
+    nextReminder.current = Date.now() + 60 * 60 * 1000;
+    // clear any pending remind-later timeout
+    if (remindLaterTimeout.current) {
+      clearTimeout(remindLaterTimeout.current);
+      remindLaterTimeout.current = null;
+    }
+    lastUserAction.current = Date.now();
+    showBreakReminderRef.current = false;
+  }, [addLog]);
+
+  const handleRemindLater = useCallback(() => {
+    addLog('Break reminder postponed', 'warning');
+    setShowBreakReminder(false);
+    // postpone next reminder by 10 minutes
+    nextReminder.current = Date.now() + 10 * 60 * 1000;
+    // clear any existing timeout
+    if (remindLaterTimeout.current) {
+      clearTimeout(remindLaterTimeout.current);
+      remindLaterTimeout.current = null;
+    }
+    lastUserAction.current = Date.now();
+    showBreakReminderRef.current = false;
+  }, [addLog]);
+
+  const handleStrainConfirm = useCallback(() => {
+    addLog('Strain alert acknowledged', 'info');
+    setShowStrainAlert(false);
+    // also treat as break start for timer
+    nextReminder.current = Date.now() + 60 * 60 * 1000;
+    lastUserAction.current = Date.now();
+    showBreakReminderRef.current = false;
+  }, [addLog]);
 
   const d = healthState.details;
 
@@ -255,6 +340,20 @@ export default function Home() {
         <div className="pt-4">
           <AIInsights />
         </div>
+
+        {/* Modals */}
+        <BreakReminderModal
+          visible={showBreakReminder}
+          reasons={breakReasons}
+          recommendations={breakRecs}
+          onStartBreak={handleStartBreak}
+          onRemindLater={handleRemindLater}
+        />
+        <StrainAlertModal
+          visible={showStrainAlert}
+          strainLevel={criticalStrainLevel}
+          onConfirm={handleStrainConfirm}
+        />
       </div>
     </main>
   );
