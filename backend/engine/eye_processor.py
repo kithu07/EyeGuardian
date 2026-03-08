@@ -23,9 +23,9 @@ class EyeGuardianEngine:
         self.blink_timestamps = deque(maxlen=2000) 
         self.redness_history = deque(maxlen=1000)
         
-        self.EAR_THRESHOLD_COMPLETE = 0.15
+        self.EAR_THRESHOLD_COMPLETE = 0.21
         self.EAR_THRESHOLD_INCOMPLETE = 0.25 
-        self.EAR_THRESHOLD_OPEN = 0.30
+        self.EAR_THRESHOLD_OPEN = 0.28
         
 
         self.RIGHT_EYE_INDICES = [33, 160, 158, 133, 153, 144] 

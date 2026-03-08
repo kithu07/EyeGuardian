@@ -6,9 +6,9 @@ class RiskFusionEngine:
     def compute(self, risks: dict):
         weights = {
             "blink": 0.25,
-            "redness": 0.25,
-            "posture": 0.2,
-            "distance": 0.15,
+            "redness": 0.20,
+            "posture": 0.20,
+            "distance": 0.20,
             "lighting": 0.15
         }
 

@@ -1,12 +1,13 @@
 {
-  "timestamp": 1772429271.9577448,
+  "timestamp": 1772957724.2825053,
   "insights": {
-    "summary": "Based on your EyeGuardian app data, your eye health indicates moderate to high risk for eye strain and poor posture. Your Eye Strain Index of 48.5% is above the healthy range, and your blink rate of 13.2 blinks/min is below the recommended 15-20 blinks/min. Additionally, your posture score of 72.5% falls short of the healthy threshold of 85%.",
-    "improvements": "To restore your eye health, you need to reduce eye strain, practice good posture, and maintain a healthy blink rate.",
+    "summary": "Your eye health is a concern, with an Eye Strain Index of 48.5% and a Blink Rate of 13.2 blinks/min, both indicating suboptimal performance. \n   Additionally, your Screen Distance of 42.0 cm is less than healthy range and your Total Usage of 40.8 hours in a short time could be a threat to your eye health.",
+    "improvements": "It's essential to improve your posture and reduce your screen time. Consider investing in an ergonomic chair and monitor, and take breaks every 20 minutes to look away from your screen.",
     "tips": [
-      "Maintain a screen distance of 60-70 cm (23.6-27.6 inches) to reduce eye strain, as excessive proximity has been associated with increased risk of myopia (American Academy of Ophthalmology, 2020).",
-      "Follow the 20-20-20 rule: every 20 minutes, look away from your screen and focus on something 20 feet away for 20 seconds to reduce eye strain and promote blinking (American Optometric Association, 2020).",
-      "Adjust your ambient lighting to an acceptable range of 100-180 lux, as exposure to extreme brightness has been linked to eye fatigue and strain (International Commission on Illumination, 2018)."
+      "Maintain a 20-20-20 rule: Every 20 minutes, look away from your screen and focus on something 20 feet away for 20 seconds.",
+      "Adjust your monitor distance to 50-70 cm to reduce screen glare and eye strain.",
+      "Blink at least 15-20 times per minute to prevent dry eyes and maintain eye lubrication.",
+      "Limit your total screen time to around 8 hours per day, including work, entertainment, and social media."
     ]
   }
 }
