@@ -1,13 +1,13 @@
 {
-  "timestamp": 1772957724.2825053,
+  "timestamp": 1772971307.6114638,
   "insights": {
-    "summary": "Your eye health is a concern, with an Eye Strain Index of 48.5% and a Blink Rate of 13.2 blinks/min, both indicating suboptimal performance. \n   Additionally, your Screen Distance of 42.0 cm is less than healthy range and your Total Usage of 40.8 hours in a short time could be a threat to your eye health.",
-    "improvements": "It's essential to improve your posture and reduce your screen time. Consider investing in an ergonomic chair and monitor, and take breaks every 20 minutes to look away from your screen.",
+    "summary": "Based on your EyeGuardian app data, it appears that you're experiencing eye strain and poor posture. Your blink rate of 13.2 blinks/min is below the healthy range (15-20 blinks/min), indicating reduced tear production and increased dry eye risk. Additionally, your screen distance of 42.0 cm is shorter than the recommended 50-70 cm, which may contribute to eye strain. It's essential to address these issues to prevent long-term eye health consequences.",
+    "improvements": "to reduce eye strain and improve posture",
     "tips": [
-      "Maintain a 20-20-20 rule: Every 20 minutes, look away from your screen and focus on something 20 feet away for 20 seconds.",
-      "Adjust your monitor distance to 50-70 cm to reduce screen glare and eye strain.",
-      "Blink at least 15-20 times per minute to prevent dry eyes and maintain eye lubrication.",
-      "Limit your total screen time to around 8 hours per day, including work, entertainment, and social media."
+      "Adjust your screen distance to the recommended 50-70 cm to reduce eye strain.",
+      "Blink regularly every 20-30 minutes to maintain tear production and prevent dry eyes. You can also try the 20-20-20 rule: every 20 minutes, look away from your screen and focus on something 20 feet away for 20 seconds.",
+      "Monitor your ambient brightness and adjust it to the healthy range (100-180). Lower or higher brightness levels can cause eye strain and fatigue.",
+      "Be mindful of your posture throughout the day, aiming for a score above 85% (currently 72.5%). Regular breaks and reminders can help you maintain good posture."
     ]
   }
 }
