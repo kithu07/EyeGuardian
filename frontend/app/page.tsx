@@ -115,6 +115,9 @@ export default function Home() {
 
   // track whether we've received a real data packet
   const gotData = useRef(false);
+  const appVisibleRef = useRef(true);
+  const lastMetricsUpdateMs = useRef(0);
+  const METRICS_UPDATE_INTERVAL_MS = 500; // 2 FPS for stable UI (camera can still refresh faster)
 
   // Helpers
   const addLog = useCallback((message: string, type: 'info' | 'warning' | 'danger' = 'info') => {
@@ -149,7 +152,8 @@ export default function Home() {
 
   useEffect(() => {
     const connectWebSocket = () => {
-      const socket = new WebSocket('ws://localhost:8000/ws/health-stream');
+      if (!appVisibleRef.current) return;
+      const socket = new WebSocket('ws://localhost:8000/ws/health-stream?include_frame=1&send_fps=10');
       socketRef.current = socket;
 
       socket.onopen = () => {
@@ -159,7 +163,28 @@ export default function Home() {
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          setHealthState(data);
+          const nowMs = Date.now();
+
+          // Always keep the last non-null camera frame to avoid flicker
+          setHealthState(prev => ({
+            ...prev,
+            camera_frame: data.camera_frame ?? prev.camera_frame,
+          }));
+
+          // Throttle metric updates so cards/gauge don't constantly re-animate/flicker
+          if (nowMs - lastMetricsUpdateMs.current >= METRICS_UPDATE_INTERVAL_MS) {
+            lastMetricsUpdateMs.current = nowMs;
+            setHealthState(prev => ({
+              ...prev,
+              blink_rate: typeof data.blink_rate === 'number' ? data.blink_rate : prev.blink_rate,
+              distance_cm: typeof data.distance_cm === 'number' ? data.distance_cm : prev.distance_cm,
+              posture_score: typeof data.posture_score === 'number' ? data.posture_score : prev.posture_score,
+              ambient_light: typeof data.ambient_light === 'number' ? data.ambient_light : prev.ambient_light,
+              overall_strain_index: typeof data.overall_strain_index === 'number' ? data.overall_strain_index : prev.overall_strain_index,
+              redness: typeof data.redness === 'number' ? data.redness : prev.redness,
+              details: data.details ?? prev.details,
+            }));
+          }
 
           // ignore the very first message if it's placeholder/initial state
           if (!gotData.current) {
@@ -168,7 +193,7 @@ export default function Home() {
 
           // run diagnostics on every update only after first real data
           // also enforce a short startup delay so alerts don't fire immediately
-          const now = Date.now();
+          const now = nowMs;
           const startupDelayPassed = now - sessionStart.current >= 60 * 1000; // 1 minute
           if (gotData.current && startupDelayPassed) {
             const failures = evaluateHealthState(data);
@@ -206,12 +231,31 @@ export default function Home() {
       };
 
       socket.onclose = () => {
+        // If app is hidden, we intentionally keep it disconnected to save resources
+        if (!appVisibleRef.current) return;
         addLog('Connection lost. Reconnecting...', 'warning');
         setTimeout(connectWebSocket, 3000);
       };
     };
 
     connectWebSocket();
+
+    // In Electron: pause UI updates (and camera feed) when the window is hidden.
+    // Background monitoring/notifications continue via Electron main process.
+    if (typeof window !== 'undefined' && window.electronAPI?.onAppVisibilityChange) {
+      window.electronAPI.onAppVisibilityChange((isVisible: boolean) => {
+        appVisibleRef.current = isVisible;
+        if (!isVisible) {
+          if (socketRef.current) {
+            try { socketRef.current.close(); } catch { /* ignore */ }
+            socketRef.current = null;
+          }
+          return;
+        }
+        // visible again => reconnect
+        connectWebSocket();
+      });
+    }
 
     return () => {
       if (socketRef.current) {

@@ -7,7 +7,7 @@ export function sendAppLog(message: string, type: 'info' | 'warning' | 'danger' 
 }
 
 export function sendNativeNotification(title: string, body: string) {
-    if (typeof window !== 'undefined' && window.electronAPI) {
+    if (typeof window !== 'undefined' && window.electronAPI?.sendNotification) {
         window.electronAPI.sendNotification(title, body);
     } else {
         // fallback to browser alert

@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "electron:dev": "concurrently -k \"npm run dev\" \"wait-on tcp:3000 && NODE_ENV=development electron .\"",
-    "electron:build": "next build && electron ."
+    "electron:prod": "npm run build && NODE_ENV=production electron .",
+    "electron:build": "npm run build && NODE_ENV=production electron ."
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
