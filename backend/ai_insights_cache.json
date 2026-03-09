@@ -1,13 +1,13 @@
 {
-  "timestamp": 1772971307.6114638,
+  "timestamp": 1773028847.2837965,
   "insights": {
-    "summary": "Based on your EyeGuardian app data, it appears that you're experiencing eye strain and poor posture. Your blink rate of 13.2 blinks/min is below the healthy range (15-20 blinks/min), indicating reduced tear production and increased dry eye risk. Additionally, your screen distance of 42.0 cm is shorter than the recommended 50-70 cm, which may contribute to eye strain. It's essential to address these issues to prevent long-term eye health consequences.",
-    "improvements": "to reduce eye strain and improve posture",
+    "summary": "Based on your EyeGuardian app data, your current eye health risks include high Eye Strain Index (38.75% of weekly averages) and a blink rate of 1.69 blinks/min, which is far below the healthy range of 15-20 blinks/min. Your posture score of 82.75% in the weekly averages also indicates room for improvement. These factors contribute to your overall eye health status, suggesting a moderate risk of eye strain and dry eyes.",
+    "improvements": "To prioritize eye health, reduce screen time, improve posture, and maintain a healthy blink rate.",
     "tips": [
-      "Adjust your screen distance to the recommended 50-70 cm to reduce eye strain.",
-      "Blink regularly every 20-30 minutes to maintain tear production and prevent dry eyes. You can also try the 20-20-20 rule: every 20 minutes, look away from your screen and focus on something 20 feet away for 20 seconds.",
-      "Monitor your ambient brightness and adjust it to the healthy range (100-180). Lower or higher brightness levels can cause eye strain and fatigue.",
-      "Be mindful of your posture throughout the day, aiming for a score above 85% (currently 72.5%). Regular breaks and reminders can help you maintain good posture."
+      "Adjust your screen distance to 50-70 cm for optimal viewing comfort. Your current distance of 43.82 cm may contribute to eye strain.",
+      "Practice good posture regularly, aiming for a weekly average posture score of 85% or higher to minimize strain on your eyes and neck.",
+      "Take breaks every 20 minutes to look 20 feet away and blink 10 times to stimulate healthy blinking habits.",
+      "Monitor your ambient brightness and adjust your workspace lighting to a comfortable range of 100-180, as excessive brightness may lead to eye fatigue."
     ]
   }
 }

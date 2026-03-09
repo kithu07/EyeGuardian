@@ -653,3 +653,51 @@ class EyeGuardianDB:
             (year, month),
         ).fetchone()
         return dict(row) if row else None
+
+    # -- insights data (replaces dummy_insights_data.json) --------------------
+
+    def get_insights_data(self) -> Dict[str, Any]:
+        """
+        Return weekly and monthly aggregated stats in the same shape as
+        the old dummy_insights_data.json so the AI insights manager can
+        use it as a drop-in replacement.
+        """
+        conn = self._get_conn()
+
+        # Most recent weekly summary
+        w_row = conn.execute(
+            "SELECT * FROM weekly_summaries ORDER BY year DESC, week DESC LIMIT 1"
+        ).fetchone()
+
+        # Most recent monthly summary
+        m_row = conn.execute(
+            "SELECT * FROM monthly_summaries ORDER BY year DESC, month DESC LIMIT 1"
+        ).fetchone()
+
+        def _summary_dict(row) -> Dict[str, Any]:
+            if row is None:
+                return {}
+            r = dict(row)
+            def _r(val, ndigits=2):
+                try:
+                    return round(float(val), ndigits)
+                except (TypeError, ValueError):
+                    return val
+            return {
+                "avg_strain_index": _r(r.get("avg_strain_index", 0)),
+                "avg_blink_rate": _r(r.get("avg_blink_rate", 0)),
+                "avg_distance_cm": _r(r.get("avg_distance_cm", 0)),
+                "avg_posture_score": _r(r.get("avg_posture_score", 0)),
+                "avg_brightness": _r(r.get("avg_brightness", 0)),
+                "avg_redness": _r(r.get("avg_redness", 0)),
+                "total_session_minutes": _r(r.get("total_session_minutes", 0)),
+                "alert_count": r.get("alert_count", 0),
+                "dry_eye_minutes": _r(r.get("dry_eye_minutes", 0)),
+                "bad_posture_minutes": _r(r.get("bad_posture_minutes", 0)),
+            }
+
+        return {
+            "weekly_stats": _summary_dict(w_row),
+            "monthly_stats": _summary_dict(m_row),
+        }
+

@@ -52,6 +52,7 @@ db = EyeGuardianDB()          # single DB instance shared across requests
 insights_manager = AIInsightsManager(
     api_key=os.environ.get("GROQ_API_KEY"),
     cache_path=os.path.join(BASE_DIR, "ai_insights_cache.json"),
+    db=db,
     dummy_data_path=os.path.join(BASE_DIR, "data", "dummy_insights_data.json")
 )
 
@@ -426,6 +427,11 @@ async def api_monthly_summary(year: int, month: int):
     if summary is None:
         return JSONResponse(status_code=404, content={"detail": "No data for this month"})
     return summary
+
+@app.get("/api/insights-data")
+async def api_insights_data():
+    """Return the aggregated weekly/monthly stats used by AI insights."""
+    return db.get_insights_data()
 
 @app.get("/api/ai-insights")
 async def get_ai_insights():

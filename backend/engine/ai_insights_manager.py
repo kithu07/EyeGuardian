@@ -4,10 +4,12 @@ import time
 import threading
 from groq import Groq
 
+
 class AIInsightsManager:
-    def __init__(self, api_key: str, cache_path: str, dummy_data_path: str):
+    def __init__(self, api_key: str, cache_path: str, db=None, dummy_data_path: str = None):
         self.api_key = api_key
         self.cache_path = cache_path
+        self.db = db
         self.dummy_data_path = dummy_data_path
         # Using the model recommended by the user
         self.model = "llama-3.1-8b-instant"
@@ -15,10 +17,23 @@ class AIInsightsManager:
         self.client = Groq(api_key=self.api_key)
 
     def _get_data(self):
-        """In a real scenario, this would query the SQLite DB."""
-        if os.path.exists(self.dummy_data_path):
+        """Query the database for real weekly/monthly stats.
+        Falls back to dummy JSON file if DB has no data."""
+        # Try real DB first
+        if self.db is not None:
+            try:
+                data = self.db.get_insights_data()
+                # Check if we actually have data (non-empty weekly_stats)
+                if data.get("weekly_stats"):
+                    return data
+            except Exception as e:
+                print(f"[AIInsights] Error querying DB: {e}")
+
+        # Fallback to dummy data file if available
+        if self.dummy_data_path and os.path.exists(self.dummy_data_path):
             with open(self.dummy_data_path, 'r') as f:
                 return json.load(f)
+
         return {}
 
     def get_insights(self, force_refresh: bool = False):
@@ -42,8 +57,18 @@ class AIInsightsManager:
         
         try:
             data = self._get_data()
-            w = data.get('weekly_stats', {})
-            m = data.get('monthly_stats', {})
+            w_raw = data.get('weekly_stats', {})
+            m_raw = data.get('monthly_stats', {})
+
+            # Round all numeric values to 2 decimal places
+            def _r(val, ndigits=2):
+                try:
+                    return round(float(val), ndigits)
+                except (TypeError, ValueError):
+                    return val
+
+            w = {k: _r(v) for k, v in w_raw.items()}
+            m = {k: _r(v) for k, v in m_raw.items()}
             
             prompt = f"""
             You are an AI Eye Health Expert. Based on the following user patterns captured by the EyeGuardian app, 

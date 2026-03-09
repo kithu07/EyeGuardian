@@ -6,6 +6,7 @@ import StatCard from '@/components/StatCard';
 import LogPanel, { Log } from '@/components/LogPanel';
 import CameraPlaceholder from '@/components/CameraPlaceholder';
 import AIInsights from '@/components/AIInsights';
+import ProgressCharts from '@/components/ProgressCharts';
 
 // new components & helpers for modals and alerts
 import BreakReminderModal from '@/components/BreakReminderModal';
@@ -351,6 +352,11 @@ export default function Home() {
         {/* AI Insights Section (Bottom) */}
         <div className="pt-4">
           <AIInsights />
+        </div>
+
+        {/* Progress Charts Section */}
+        <div className="pt-2 pb-6">
+          <ProgressCharts />
         </div>
 
         {/* Modals */}
