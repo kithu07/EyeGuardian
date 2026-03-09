@@ -38,6 +38,16 @@ POSTURE_MODEL_PATH = os.path.join(PROJECT_DIR, "posture", "face_landmarker.task"
 # How often (seconds) to persist a snapshot row – keeps DB lean
 SNAPSHOT_INTERVAL = 30
 
+# --- Performance knobs ---
+# Keep preview smooth, but throttle heavy analysis
+ANALYSIS_INTERVAL_SEC = 5.0  # posture/light/distance cadence
+# How often to encode a new preview image (UI will keep showing last frame between encodes)
+PREVIEW_ENCODE_FPS_DEFAULT = 10.0
+# Reduce preview clarity to cut CPU/network/memory
+PREVIEW_JPEG_QUALITY = 55
+PREVIEW_WIDTH = 640
+PREVIEW_HEIGHT = 360
+
 app = FastAPI()
     
 # Add CORS middleware
@@ -77,11 +87,28 @@ async def health_stream_endpoint(websocket: WebSocket):
         await websocket.close()
         return
 
+    # Query params:
+    # - include_frame=0: don't send camera_frame (for background notifier)
+    # - send_fps: websocket send rate (float)
+    include_frame = websocket.query_params.get("include_frame", "1") != "0"
+    try:
+        send_fps = float(websocket.query_params.get("send_fps", str(PREVIEW_ENCODE_FPS_DEFAULT)))
+    except Exception:
+        send_fps = PREVIEW_ENCODE_FPS_DEFAULT
+    send_fps = max(0.5, min(30.0, send_fps))
+
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         await websocket.send_json({"error": "Could not open camera"})
         await websocket.close()
         return
+
+    # Lower camera capture resolution at source where supported
+    try:
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, PREVIEW_WIDTH)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, PREVIEW_HEIGHT)
+    except Exception:
+        pass
 
     # Initialize all engines
     eye_engine = EyeGuardianEngine()
@@ -104,6 +131,19 @@ async def health_stream_endpoint(websocket: WebSocket):
         print(f"Warning: Posture model not found at {POSTURE_MODEL_PATH}")
 
     try:
+        last_analysis_time = 0.0
+        last_preview_time = 0.0
+        last_camera_frame_str = None
+
+        # Keep last computed values so frontend never gets nil/placeholder
+        last_posture_data: Dict = {
+            "head_position": "N/A", "overall": "N/A",
+            "pitch": 0, "yaw": 0, "roll": 0,
+            "posture_risk": 0, "distance_cm": 50,
+            "distance_risk": 0, "posture_score": 100,
+        }
+        last_light_data: Dict = {"brightness": 0, "level": "Unknown", "risk": 0}
+
         while True:
             ret, frame = cap.read()
             if not ret:
@@ -114,41 +154,48 @@ async def health_stream_endpoint(websocket: WebSocket):
 
             # --- Eye processing (blink, redness, EAR) ---
             try:
-                eye_data, annotated_frame = eye_engine.process_frame(frame, return_annotated=True)
+                # Downscale before heavy work to reduce CPU/memory
+                frame_small = cv2.resize(frame, (PREVIEW_WIDTH, PREVIEW_HEIGHT))
+                eye_data, annotated_frame = eye_engine.process_frame(frame_small, return_annotated=True)
             except Exception as e:
                 eye_data = {"blinks": 0, "incomplete_blinks": 0, "redness": 0.0, "is_dry": False, "ear": 0.0}
-                annotated_frame = frame.copy()
+                annotated_frame = cv2.resize(frame, (PREVIEW_WIDTH, PREVIEW_HEIGHT))
 
-            # --- Posture & distance ---
-            if posture_analyzer:
-                try:
-                    posture_data = posture_analyzer.analyze(frame)
-                except Exception as e:
-                    print(f"[Posture] Error analyzing frame: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    posture_data = {
-                        "head_position": "Error", "overall": "Unknown",
+            now = time.time()
+
+            # --- Throttled analysis (posture/distance + ambient light) ---
+            if now - last_analysis_time >= ANALYSIS_INTERVAL_SEC:
+                last_analysis_time = now
+
+                # Posture & distance
+                if posture_analyzer:
+                    try:
+                        last_posture_data = posture_analyzer.analyze(frame_small)
+                    except Exception as e:
+                        print(f"[Posture] Error analyzing frame: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        last_posture_data = {
+                            "head_position": "Error", "overall": "Unknown",
+                            "pitch": 0, "yaw": 0, "roll": 0,
+                            "posture_risk": 0, "distance_cm": 50,
+                            "distance_risk": 0, "posture_score": 100,
+                        }
+                else:
+                    last_posture_data = {
+                        "head_position": "N/A", "overall": "N/A",
                         "pitch": 0, "yaw": 0, "roll": 0,
                         "posture_risk": 0, "distance_cm": 50,
                         "distance_risk": 0, "posture_score": 100,
                     }
-            else:
-                posture_data = {
-                    "head_position": "N/A", "overall": "N/A",
-                    "pitch": 0, "yaw": 0, "roll": 0,
-                    "posture_risk": 0, "distance_cm": 50,
-                    "distance_risk": 0, "posture_score": 100,
-                }
 
-            # --- Ambient light ---
-            try:
-                light_data = light_analyzer.analyze(frame)
-            except Exception:
-                light_data = {"brightness": 0, "level": "Unknown", "risk": 0}
+                # Ambient light
+                try:
+                    last_light_data = light_analyzer.analyze(frame_small)
+                except Exception:
+                    last_light_data = {"brightness": 0, "level": "Unknown", "risk": 0}
 
             # --- Blink rate (blinks in the last 60 seconds) ---
-            now = time.time()
             recent_blinks = sum(1 for t in eye_engine.blink_timestamps if now - t <= 60)
 
             # --- Redness level ---
@@ -167,26 +214,30 @@ async def health_stream_endpoint(websocket: WebSocket):
             risks = {
                 "blink": blink_risk,
                 "redness": redness_risk,
-                "posture": posture_data["posture_risk"] * 2,
-                "distance": posture_data["distance_risk"] * 2,
-                "lighting": light_data["risk"],
+                "posture": last_posture_data["posture_risk"] * 2,
+                "distance": last_posture_data["distance_risk"] * 2,
+                "lighting": last_light_data["risk"],
             }
             fusion = risk_engine.compute(risks)
             strain_index = min(100, int(fusion["risk_score"] / 2.0 * 100))
 
-            # --- Encode annotated frame as base64 JPEG ---
-            _, buffer = cv2.imencode(".jpg", annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-            frame_b64 = base64.b64encode(buffer).decode("utf-8")
+            # --- Preview encoding (smooth UX: always send last frame, refresh at send_fps) ---
+            if include_frame and (now - last_preview_time >= (1.0 / send_fps)):
+                last_preview_time = now
+                _, buffer = cv2.imencode(".jpg", annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, PREVIEW_JPEG_QUALITY])
+                frame_b64 = base64.b64encode(buffer).decode("utf-8")
+                last_camera_frame_str = f"data:image/jpeg;base64,{frame_b64}"
+                del buffer, frame_b64
 
             # --- Build comprehensive payload ---
             payload = {
                 "blink_rate": recent_blinks,
-                "distance_cm": posture_data["distance_cm"],
-                "posture_score": posture_data["posture_score"],
-                "ambient_light": round(light_data["brightness"]),
+                "distance_cm": last_posture_data["distance_cm"],
+                "posture_score": last_posture_data["posture_score"],
+                "ambient_light": round(last_light_data["brightness"]),
                 "overall_strain_index": strain_index,
                 "redness": round(redness, 2),
-                "camera_frame": f"data:image/jpeg;base64,{frame_b64}",
+                "camera_frame": last_camera_frame_str if include_frame else None,
                 "details": {
                     "blink": {
                         "ear": round(eye_data.get("ear", 0), 3),
@@ -195,25 +246,25 @@ async def health_stream_endpoint(websocket: WebSocket):
                         "is_dry": eye_data.get("is_dry", False),
                     },
                     "distance": {
-                        "value_cm": posture_data["distance_cm"],
-                        "risk_score": posture_data["distance_risk"],
+                        "value_cm": last_posture_data["distance_cm"],
+                        "risk_score": last_posture_data["distance_risk"],
                         "status": (
-                            "Too Close" if posture_data["distance_risk"] >= 1.0
-                            else ("Too Far" if posture_data["distance_risk"] > 0 else "Safe")
+                            "Too Close" if last_posture_data["distance_risk"] >= 1.0
+                            else ("Too Far" if last_posture_data["distance_risk"] > 0 else "Safe")
                         ),
                     },
                     "light": {
-                        "brightness": light_data["brightness"],
-                        "level": light_data["level"],
-                        "risk": light_data["risk"],
+                        "brightness": last_light_data["brightness"],
+                        "level": last_light_data["level"],
+                        "risk": last_light_data["risk"],
                     },
                     "posture": {
-                        "head_position": posture_data["head_position"],
-                        "overall": posture_data["overall"],
-                        "pitch": posture_data["pitch"],
-                        "yaw": posture_data["yaw"],
-                        "roll": posture_data["roll"],
-                        "risk": posture_data["posture_risk"],
+                        "head_position": last_posture_data["head_position"],
+                        "overall": last_posture_data["overall"],
+                        "pitch": last_posture_data["pitch"],
+                        "yaw": last_posture_data["yaw"],
+                        "roll": last_posture_data["roll"],
+                        "risk": last_posture_data["posture_risk"],
                     },
                     "redness": {
                         "score": round(redness, 2),
@@ -249,24 +300,25 @@ async def health_stream_endpoint(websocket: WebSocket):
                         db.insert_alert(session_id, "dry_eyes", "warning",
                                         f"Low blink rate ({recent_blinks}/min) – eyes may be dry")
 
-                    if posture_data["posture_risk"] >= 1.0:
+                    if last_posture_data["posture_risk"] >= 1.0:
                         db.insert_alert(session_id, "bad_posture", "danger",
-                                        f"Poor posture detected: {posture_data['head_position']}")
-                    elif posture_data["posture_risk"] >= 0.5:
+                                        f"Poor posture detected: {last_posture_data['head_position']}")
+                    elif last_posture_data["posture_risk"] >= 0.5:
                         db.insert_alert(session_id, "bad_posture", "warning",
-                                        f"Posture needs attention: {posture_data['head_position']}")
+                                        f"Posture needs attention: {last_posture_data['head_position']}")
 
-                    if posture_data["distance_risk"] >= 1.0:
+                    if last_posture_data["distance_risk"] >= 1.0:
                         db.insert_alert(session_id, "too_close", "warning",
-                                        f"Too close to screen: {posture_data['distance_cm']} cm")
+                                        f"Too close to screen: {last_posture_data['distance_cm']} cm")
 
-                    if light_data["risk"] >= 2:
+                    if last_light_data["risk"] >= 2:
                         db.insert_alert(session_id, "bad_lighting", "warning",
-                                        f"Lighting is {light_data['level']} (brightness {light_data['brightness']:.0f})")
+                                        f"Lighting is {last_light_data['level']} (brightness {last_light_data['brightness']:.0f})")
                 except Exception as db_err:
                     print(f"[DB] Error saving snapshot/alert: {db_err}")
 
-            await asyncio.sleep(0.066)  # ~15 FPS
+            # Yield; UI gets smooth preview because we always send last frame string
+            await asyncio.sleep(0.001)
 
     except WebSocketDisconnect:
         print("Client disconnected from health stream")
