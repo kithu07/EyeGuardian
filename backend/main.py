@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import json
+import threading
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -47,6 +48,49 @@ PREVIEW_ENCODE_FPS_DEFAULT = 10.0
 PREVIEW_JPEG_QUALITY = 55
 PREVIEW_WIDTH = 640
 PREVIEW_HEIGHT = 360
+
+# Target FPS for the camera read loop (caps CPU usage)
+TARGET_FPS = 30.0
+# How many consecutive frame-read failures before giving up
+MAX_CONSECUTIVE_FAILURES = 30
+
+# ---------------------------------------------------------------------------
+# Shared camera singleton – prevents multiple WebSocket clients from each
+# opening their own cv2.VideoCapture(0) and fighting over the hardware.
+# ---------------------------------------------------------------------------
+_shared_cap = None
+_shared_cap_refcount = 0
+_shared_cap_lock = threading.Lock()
+
+
+def acquire_camera():
+    """Get a reference to the shared camera, opening it if needed."""
+    global _shared_cap, _shared_cap_refcount
+    with _shared_cap_lock:
+        if _shared_cap is None or not _shared_cap.isOpened():
+            _shared_cap = cv2.VideoCapture(0)
+            try:
+                _shared_cap.set(cv2.CAP_PROP_FRAME_WIDTH, PREVIEW_WIDTH)
+                _shared_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, PREVIEW_HEIGHT)
+            except Exception:
+                pass
+        _shared_cap_refcount += 1
+        return _shared_cap
+
+
+def release_camera():
+    """Decrement refcount; release hardware when last client disconnects."""
+    global _shared_cap, _shared_cap_refcount
+    with _shared_cap_lock:
+        _shared_cap_refcount -= 1
+        if _shared_cap_refcount <= 0:
+            if _shared_cap is not None:
+                try:
+                    _shared_cap.release()
+                except Exception:
+                    pass
+            _shared_cap = None
+            _shared_cap_refcount = 0
 
 app = FastAPI()
     
@@ -97,18 +141,12 @@ async def health_stream_endpoint(websocket: WebSocket):
         send_fps = PREVIEW_ENCODE_FPS_DEFAULT
     send_fps = max(0.5, min(30.0, send_fps))
 
-    cap = cv2.VideoCapture(0)
+    cap = acquire_camera()
     if not cap.isOpened():
+        release_camera()
         await websocket.send_json({"error": "Could not open camera"})
         await websocket.close()
         return
-
-    # Lower camera capture resolution at source where supported
-    try:
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, PREVIEW_WIDTH)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, PREVIEW_HEIGHT)
-    except Exception:
-        pass
 
     # Initialize all engines
     eye_engine = EyeGuardianEngine()
@@ -134,6 +172,7 @@ async def health_stream_endpoint(websocket: WebSocket):
         last_analysis_time = 0.0
         last_preview_time = 0.0
         last_camera_frame_str = None
+        consecutive_read_failures = 0
 
         # Keep last computed values so frontend never gets nil/placeholder
         last_posture_data: Dict = {
@@ -145,10 +184,17 @@ async def health_stream_endpoint(websocket: WebSocket):
         last_light_data: Dict = {"brightness": 0, "level": "Unknown", "risk": 0}
 
         while True:
+            loop_start = time.time()
+
             ret, frame = cap.read()
             if not ret:
-                await websocket.send_json({"error": "Failed to read frame"})
-                break
+                consecutive_read_failures += 1
+                if consecutive_read_failures > MAX_CONSECUTIVE_FAILURES:
+                    await websocket.send_json({"error": "Camera lost after repeated failures"})
+                    break
+                await asyncio.sleep(0.033)  # wait ~1 frame before retry
+                continue
+            consecutive_read_failures = 0
 
             frame = cv2.flip(frame, 1)
 
@@ -317,8 +363,10 @@ async def health_stream_endpoint(websocket: WebSocket):
                 except Exception as db_err:
                     print(f"[DB] Error saving snapshot/alert: {db_err}")
 
-            # Yield; UI gets smooth preview because we always send last frame string
-            await asyncio.sleep(0.001)
+            # Cap loop at TARGET_FPS to avoid hammering CPU / camera driver
+            elapsed = time.time() - loop_start
+            sleep_time = max(0.001, (1.0 / TARGET_FPS) - elapsed)
+            await asyncio.sleep(sleep_time)
 
     except WebSocketDisconnect:
         print("Client disconnected from health stream")
@@ -327,14 +375,14 @@ async def health_stream_endpoint(websocket: WebSocket):
         import traceback
         traceback.print_exc()
     finally:
-        cap.release()
+        release_camera()
         # Close the DB session
         try:
             db.end_session(session_id)
             print(f"DB session {session_id} ended")
         except Exception:
             pass
-        print("Camera released")
+        print("Camera released (shared refcount decreased)")
 
 
 # Keep /ws for backward compatibility (mock data matching new structure)

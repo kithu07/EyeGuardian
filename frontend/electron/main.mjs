@@ -85,10 +85,19 @@ function startBackgroundMonitoring() {
 
         backgroundSocket.onclose = () => {
             backgroundSocket = null;
-            // reconnect after a delay
-            setTimeout(startBackgroundMonitoring, 3000);
+            // Only reconnect if we still want monitoring (window still hidden)
+            if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+                setTimeout(startBackgroundMonitoring, 3000);
+            }
         };
     } catch {
+        backgroundSocket = null;
+    }
+}
+
+function stopBackgroundMonitoring() {
+    if (backgroundSocket) {
+        try { backgroundSocket.close(); } catch { /* ignore */ }
         backgroundSocket = null;
     }
 }
@@ -122,8 +131,14 @@ function createWindow() {
         mainWindow.show();
     });
 
-    mainWindow.on('show', () => setRendererVisibility(true));
-    mainWindow.on('hide', () => setRendererVisibility(false));
+    mainWindow.on('show', () => {
+        stopBackgroundMonitoring();
+        setRendererVisibility(true);
+    });
+    mainWindow.on('hide', () => {
+        setRendererVisibility(false);
+        startBackgroundMonitoring();
+    });
 
     // Close to tray instead of quitting (for background monitoring)
     mainWindow.on('close', (event) => {
@@ -137,7 +152,10 @@ function createWindow() {
 
 app.whenReady().then(() => {
     createWindow();
-    startBackgroundMonitoring();
+    // NOTE: Do NOT call startBackgroundMonitoring() here.
+    // It opens a second WebSocket that grabs the camera and conflicts
+    // with the renderer's connection. Background monitoring starts only
+    // when the window is hidden (see 'hide' handler above).
 
     // Create system tray icon for background control
     try {
