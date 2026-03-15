@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { initAlertSound, playAlertSound, setAlertVolume } from '@/utils/rendererSoundPlayer';
 
 interface SettingsProps {
     isOpen: boolean;
@@ -11,24 +12,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     const [soundVolume, setSoundVolume] = useState(70);
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
-    useEffect(() => {
-        if (isOpen) {
-            // Load current settings
-            loadSettings();
-            
-            // Add ESC key handler to close settings
-            const handleEscKey = (e: KeyboardEvent) => {
-                if (e.key === 'Escape') {
-                    onClose();
-                }
-            };
-            
-            window.addEventListener('keydown', handleEscKey);
-            return () => window.removeEventListener('keydown', handleEscKey);
-        }
-    }, [isOpen, onClose]);
-
-    const loadSettings = async () => {
+    const loadSettings = React.useCallback(async () => {
         try {
             // Check auto-start status
             if (window.electronAPI?.getAutoStartStatus) {
@@ -50,13 +34,38 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
             // Load volume from localStorage
             const savedVolume = localStorage.getItem('soundVolume');
-            if (savedVolume !== null) {
-                setSoundVolume(parseInt(savedVolume));
-            }
+            const volume = savedVolume !== null ? parseInt(savedVolume, 10) : soundVolume;
+            setSoundVolume(volume);
+
+            // Initialize Web Audio alert player (for in-app audio alerts)
+            await initAlertSound('/break-reminder.wav', volume / 100);
+            setAlertVolume(volume);
         } catch (error) {
             console.error('Failed to load settings:', error);
         }
-    };
+    }, [soundVolume]);
+
+    useEffect(() => {
+        if (isOpen) {
+            // Load settings after paint to avoid sync state updates in render.
+            const initTimer = window.setTimeout(() => {
+                loadSettings();
+            }, 0);
+
+            // Add ESC key handler to close settings
+            const handleEscKey = (e: KeyboardEvent) => {
+                if (e.key === 'Escape') {
+                    onClose();
+                }
+            };
+
+            window.addEventListener('keydown', handleEscKey);
+            return () => {
+                window.clearTimeout(initTimer);
+                window.removeEventListener('keydown', handleEscKey);
+            };
+        }
+    }, [isOpen, onClose, loadSettings]);
 
     const handleAutoStartChange = async (enabled: boolean) => {
         try {
@@ -87,6 +96,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     const handleVolumeChange = (volume: number) => {
         setSoundVolume(volume);
         localStorage.setItem('soundVolume', volume.toString());
+        setAlertVolume(volume);
     };
 
     if (!isOpen) return null;
@@ -181,6 +191,10 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                             </div>
                             <button
                                 onClick={() => {
+                                    // Play via Web Audio API (volume controlled)
+                                    playAlertSound();
+
+                                    // Fallback: play system sound via Electron if Web Audio isn't available
                                     if (window.electronAPI?.playHighStrainSound) {
                                         window.electronAPI.playHighStrainSound();
                                     }
