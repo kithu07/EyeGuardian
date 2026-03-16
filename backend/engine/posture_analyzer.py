@@ -98,7 +98,9 @@ class PostureAnalyzer:
             pixel_eye_distance = math.hypot(x2 - x1, y2 - y1)
 
             if pixel_eye_distance > 20:
-                raw_distance = (self.REAL_EYE_DISTANCE_CM * self.FOCAL_LENGTH) / pixel_eye_distance
+                # Dynamic focal length based on current frame resolution
+                focal_length = w * (650.0 / 640.0) 
+                raw_distance = (self.REAL_EYE_DISTANCE_CM * focal_length) / pixel_eye_distance
                 self.distance_cm = self.alpha * self.distance_cm + (1 - self.alpha) * raw_distance
                 distance_valid = True
 
