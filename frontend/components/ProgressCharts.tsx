@@ -228,7 +228,7 @@ const ProgressCharts = () => {
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                 Eye Health Metrics Overview
               </h3>
-              <ResponsiveContainer width="100%" height={360}>
+              <ResponsiveContainer key={activeTab} width="100%" height={360}>
                 <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                   <CartesianGrid stroke="#334155" strokeDasharray="3 6" opacity={0.3} />
                   <XAxis
