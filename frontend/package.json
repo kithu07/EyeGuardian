@@ -20,7 +20,8 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^3.8.0",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "winreg": "^1.2.5"
   },
   "devDependencies": {
     "@types/node": "^20",
@@ -28,6 +29,7 @@
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.23",
     "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
     "electron": "^39.2.7",
     "electron-serve": "^3.0.0",
     "electron-squirrel-startup": "^1.0.1",

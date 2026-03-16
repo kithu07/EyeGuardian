@@ -304,7 +304,7 @@ class EyeGuardianDB:
             """
             SELECT COALESCE(SUM(duration_seconds), 0) / 60.0 AS total_min
               FROM sessions
-             WHERE DATE(started_at) = ?
+             WHERE started_at LIKE ? || '%'
                AND duration_seconds IS NOT NULL
             """,
             (iso_date,),
@@ -325,13 +325,13 @@ class EyeGuardianDB:
                 SUM(CASE WHEN posture_risk >= 0.5 THEN 1 ELSE 0 END) AS bad_posture_count,
                 COUNT(*) AS total_snaps
               FROM snapshots
-             WHERE DATE(timestamp) = ?
+             WHERE timestamp LIKE ? || '%'
             """,
             (iso_date,),
         ).fetchone()
 
         alert_count_row = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM alerts WHERE DATE(timestamp) = ?",
+            "SELECT COUNT(*) AS cnt FROM alerts WHERE timestamp LIKE ? || '%'",
             (iso_date,),
         ).fetchone()
         alert_count = alert_count_row["cnt"] if alert_count_row else 0
@@ -399,7 +399,7 @@ class EyeGuardianDB:
             """
             SELECT COALESCE(SUM(duration_seconds), 0) / 60.0 AS total_min
               FROM sessions
-             WHERE DATE(started_at) BETWEEN ? AND ?
+             WHERE started_at >= ? AND started_at <= ? || 'T23:59:59'
                AND duration_seconds IS NOT NULL
             """,
             (start_str, end_str),
@@ -417,15 +417,15 @@ class EyeGuardianDB:
                 AVG(redness)       AS avg_redness,
                 SUM(CASE WHEN is_dry = 1 THEN 1 ELSE 0 END) AS dry_count,
                 SUM(CASE WHEN posture_risk >= 0.5 THEN 1 ELSE 0 END) AS bad_posture_count,
-                COUNT(DISTINCT DATE(timestamp)) AS days_active
+                COUNT(DISTINCT substr(timestamp, 1, 10)) AS days_active
               FROM snapshots
-             WHERE DATE(timestamp) BETWEEN ? AND ?
+             WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59'
             """,
             (start_str, end_str),
         ).fetchone()
 
         alert_row = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM alerts WHERE DATE(timestamp) BETWEEN ? AND ?",
+            "SELECT COUNT(*) AS cnt FROM alerts WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59'",
             (start_str, end_str),
         ).fetchone()
         alert_count = alert_row["cnt"] if alert_row else 0
@@ -493,7 +493,7 @@ class EyeGuardianDB:
             """
             SELECT COALESCE(SUM(duration_seconds), 0) / 60.0 AS total_min
               FROM sessions
-             WHERE DATE(started_at) BETWEEN ? AND ?
+             WHERE started_at >= ? AND started_at <= ? || 'T23:59:59'
                AND duration_seconds IS NOT NULL
             """,
             (month_start, month_end_str),
@@ -511,15 +511,15 @@ class EyeGuardianDB:
                 AVG(redness)       AS avg_redness,
                 SUM(CASE WHEN is_dry = 1 THEN 1 ELSE 0 END) AS dry_count,
                 SUM(CASE WHEN posture_risk >= 0.5 THEN 1 ELSE 0 END) AS bad_posture_count,
-                COUNT(DISTINCT DATE(timestamp)) AS days_active
+                COUNT(DISTINCT substr(timestamp, 1, 10)) AS days_active
               FROM snapshots
-             WHERE DATE(timestamp) BETWEEN ? AND ?
+             WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59'
             """,
             (month_start, month_end_str),
         ).fetchone()
 
         alert_row = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM alerts WHERE DATE(timestamp) BETWEEN ? AND ?",
+            "SELECT COUNT(*) AS cnt FROM alerts WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59'",
             (month_start, month_end_str),
         ).fetchone()
         alert_count = alert_row["cnt"] if alert_row else 0

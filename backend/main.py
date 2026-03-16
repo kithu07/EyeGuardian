@@ -55,42 +55,234 @@ TARGET_FPS = 30.0
 MAX_CONSECUTIVE_FAILURES = 30
 
 # ---------------------------------------------------------------------------
-# Shared camera singleton – prevents multiple WebSocket clients from each
-# opening their own cv2.VideoCapture(0) and fighting over the hardware.
+# Shared Background Camera Monitor – manages camera and ML engines in one thread
+# to prevent event loop blocking and duplicate model initialization
 # ---------------------------------------------------------------------------
-_shared_cap = None
-_shared_cap_refcount = 0
-_shared_cap_lock = threading.Lock()
 
+class GlobalCameraMonitor:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.refcount = 0
+        self.thread = None
+        self.running = False
+        self.latest_payload = None
+        self.session_id = None
+        self.error_state = None
 
-def acquire_camera():
-    """Get a reference to the shared camera, opening it if needed."""
-    global _shared_cap, _shared_cap_refcount
-    with _shared_cap_lock:
-        if _shared_cap is None or not _shared_cap.isOpened():
-            _shared_cap = cv2.VideoCapture(0)
+    def start(self, db):
+        with self.lock:
+            self.refcount += 1
+            if self.refcount == 1:
+                self.running = True
+                self.error_state = None
+                self.latest_payload = None
+                self.session_id = db.start_session()
+                self.thread = threading.Thread(target=self._run_loop, args=(db,), daemon=True)
+                self.thread.start()
+            return self.session_id
+
+    def stop(self, db):
+        with self.lock:
+            self.refcount -= 1
+            if self.refcount <= 0:
+                self.running = False
+                self.refcount = 0
+                if self.session_id:
+                    try:
+                        db.end_session(self.session_id)
+                    except Exception as e:
+                        print(f"Error ending session: {e}")
+                    self.session_id = None
+
+    def get_latest(self):
+        return self.latest_payload, self.error_state
+
+    def _run_loop(self, db):
+        cap = cv2.VideoCapture(0)
+        # Use default camera resolution
+
+        if not cap.isOpened():
+            self.error_state = "Could not open camera"
+            self.running = False
+            return
+
+        eye_engine = EyeGuardianEngine()
+        light_analyzer = AmbientLightAnalyzer()
+        risk_engine = RiskFusionEngine()
+
+        posture_analyzer = None
+        if os.path.exists(POSTURE_MODEL_PATH):
             try:
-                _shared_cap.set(cv2.CAP_PROP_FRAME_WIDTH, PREVIEW_WIDTH)
-                _shared_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, PREVIEW_HEIGHT)
-            except Exception:
-                pass
-        _shared_cap_refcount += 1
-        return _shared_cap
+                posture_analyzer = PostureAnalyzer(POSTURE_MODEL_PATH)
+                print("Posture analyzer initialized successfully")
+            except Exception as e:
+                print(f"Warning: Could not initialize posture analyzer: {e}")
 
+        last_analysis_time = 0.0
+        last_preview_time = 0.0
+        last_snapshot_time = 0.0
+        last_camera_frame_str = None
+        consecutive_read_failures = 0
 
-def release_camera():
-    """Decrement refcount; release hardware when last client disconnects."""
-    global _shared_cap, _shared_cap_refcount
-    with _shared_cap_lock:
-        _shared_cap_refcount -= 1
-        if _shared_cap_refcount <= 0:
-            if _shared_cap is not None:
+        last_posture_data: Dict = {
+            "head_position": "N/A", "overall": "N/A",
+            "pitch": 0, "yaw": 0, "roll": 0,
+            "posture_risk": 0, "distance_cm": 50,
+            "distance_risk": 0, "posture_score": 100,
+        }
+        last_light_data: Dict = {"brightness": 0, "level": "Unknown", "risk": 0}
+
+        try:
+            while self.running:
+                loop_start = time.time()
+
+                ret, frame = cap.read()
+                if not ret:
+                    consecutive_read_failures += 1
+                    if consecutive_read_failures > MAX_CONSECUTIVE_FAILURES:
+                        self.error_state = "Camera lost after repeated failures"
+                        break
+                    time.sleep(0.033)
+                    continue
+                consecutive_read_failures = 0
+
+                frame = cv2.flip(frame, 1)
+
                 try:
-                    _shared_cap.release()
-                except Exception:
-                    pass
-            _shared_cap = None
-            _shared_cap_refcount = 0
+                    eye_data, annotated_frame = eye_engine.process_frame(frame, return_annotated=True)
+                except Exception as e:
+                    eye_data = {"blinks": 0, "incomplete_blinks": 0, "redness": 0.0, "is_dry": False, "ear": 0.0}
+                    annotated_frame = frame
+
+                now = time.time()
+
+                if now - last_analysis_time >= ANALYSIS_INTERVAL_SEC:
+                    last_analysis_time = now
+                    if posture_analyzer:
+                        try:
+                            last_posture_data = posture_analyzer.analyze(frame)
+                        except Exception as e:
+                            last_posture_data = {
+                                "head_position": "Error", "overall": "Unknown",
+                                "pitch": 0, "yaw": 0, "roll": 0, "posture_risk": 0,
+                                "distance_cm": 50, "distance_risk": 0, "posture_score": 100,
+                            }
+                    try:
+                        last_light_data = light_analyzer.analyze(frame)
+                    except Exception:
+                        pass
+
+                recent_blinks = sum(1 for t in eye_engine.blink_timestamps if now - t <= 60)
+                redness = eye_data.get("redness", 0.0)
+                redness_level = "High" if redness > 0.8 else ("Elevated" if redness > 0.6 else "Normal")
+
+                blink_risk = 2 if recent_blinks < 10 else (1 if recent_blinks < 15 else 0)
+                redness_risk = 2 if redness > 0.8 else (1 if redness > 0.6 else 0)
+
+                risks = {
+                    "blink": blink_risk,
+                    "redness": redness_risk,
+                    "posture": last_posture_data["posture_risk"] * 2,
+                    "distance": last_posture_data["distance_risk"] * 2,
+                    "lighting": last_light_data["risk"],
+                }
+                fusion = risk_engine.compute(risks)
+                strain_index = min(100, int(fusion["risk_score"] / 2.0 * 100))
+
+                # Always encode frame at 10 fps for the shared UI state
+                if now - last_preview_time >= (1.0 / 10.0):
+                    last_preview_time = now
+                    _, buffer = cv2.imencode(".jpg", annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, PREVIEW_JPEG_QUALITY])
+                    frame_b64 = base64.b64encode(buffer).decode("utf-8")
+                    last_camera_frame_str = f"data:image/jpeg;base64,{frame_b64}"
+
+                payload = {
+                    "blink_rate": recent_blinks,
+                    "distance_cm": last_posture_data["distance_cm"],
+                    "posture_score": last_posture_data["posture_score"],
+                    "ambient_light": round(last_light_data["brightness"]),
+                    "overall_strain_index": strain_index,
+                    "redness": round(redness, 2),
+                    "camera_frame": last_camera_frame_str,
+                    "details": {
+                        "blink": {
+                            "ear": round(eye_data.get("ear", 0), 3),
+                            "total_blinks": eye_data.get("blinks", 0),
+                            "incomplete_blinks": eye_data.get("incomplete_blinks", 0),
+                            "is_dry": eye_data.get("is_dry", False),
+                        },
+                        "distance": {
+                            "value_cm": last_posture_data["distance_cm"],
+                            "risk_score": last_posture_data["distance_risk"],
+                            "status": "Too Close" if last_posture_data["distance_risk"] >= 1.0 else ("Too Far" if last_posture_data["distance_risk"] > 0 else "Safe"),
+                        },
+                        "light": {
+                            "brightness": last_light_data["brightness"],
+                            "level": last_light_data["level"],
+                            "risk": last_light_data["risk"],
+                        },
+                        "posture": {
+                            "head_position": last_posture_data["head_position"],
+                            "overall": last_posture_data["overall"],
+                            "pitch": last_posture_data["pitch"],
+                            "yaw": last_posture_data["yaw"],
+                            "roll": last_posture_data["roll"],
+                            "risk": last_posture_data["posture_risk"],
+                        },
+                        "redness": {
+                            "score": round(redness, 2),
+                            "level": redness_level,
+                        },
+                        "risk_fusion": {
+                            "score": fusion["risk_score"],
+                            "level": fusion["risk_level"],
+                        },
+                    },
+                }
+
+                self.latest_payload = payload
+
+                now_db = time.time()
+                if now_db - last_snapshot_time >= SNAPSHOT_INTERVAL and self.session_id:
+                    last_snapshot_time = now_db
+                    try:
+                        snap_payload = {k: v for k, v in payload.items() if k != "camera_frame"}
+                        db.insert_snapshot(self.session_id, snap_payload)
+
+                        if strain_index >= 70:
+                            db.insert_alert(self.session_id, "high_strain", "danger", f"Strain index critically high: {strain_index}%")
+                        elif strain_index >= 50:
+                            db.insert_alert(self.session_id, "elevated_strain", "warning", f"Strain index elevated: {strain_index}%")
+
+                        if eye_data.get("is_dry", False):
+                            db.insert_alert(self.session_id, "dry_eyes", "warning", f"Low blink rate ({recent_blinks}/min) – eyes may be dry")
+
+                        if last_posture_data["posture_risk"] >= 1.0:
+                            db.insert_alert(self.session_id, "bad_posture", "danger", f"Poor posture detected: {last_posture_data['head_position']}")
+                        elif last_posture_data["posture_risk"] >= 0.5:
+                            db.insert_alert(self.session_id, "bad_posture", "warning", f"Posture needs attention: {last_posture_data['head_position']}")
+
+                        if last_posture_data["distance_risk"] >= 1.0:
+                            db.insert_alert(self.session_id, "too_close", "warning", f"Too close to screen: {last_posture_data['distance_cm']} cm")
+
+                        if last_light_data["risk"] >= 2:
+                            db.insert_alert(self.session_id, "bad_lighting", "warning", f"Lighting is {last_light_data['level']} (brightness {last_light_data['brightness']:.0f})")
+                    except Exception as db_err:
+                        print(f"[DB] Error saving snapshot/alert: {db_err}")
+
+                elapsed = time.time() - loop_start
+                sleep_time = max(0.001, (1.0 / TARGET_FPS) - elapsed)
+                time.sleep(sleep_time)
+
+        except Exception as e:
+            print(f"Error in background camera loop: {e}")
+        finally:
+            if cap:
+                cap.release()
+            self.running = False
+
+
+camera_monitor = GlobalCameraMonitor()
 
 app = FastAPI()
     
@@ -131,9 +323,6 @@ async def health_stream_endpoint(websocket: WebSocket):
         await websocket.close()
         return
 
-    # Query params:
-    # - include_frame=0: don't send camera_frame (for background notifier)
-    # - send_fps: websocket send rate (float)
     include_frame = websocket.query_params.get("include_frame", "1") != "0"
     try:
         send_fps = float(websocket.query_params.get("send_fps", str(PREVIEW_ENCODE_FPS_DEFAULT)))
@@ -141,248 +330,34 @@ async def health_stream_endpoint(websocket: WebSocket):
         send_fps = PREVIEW_ENCODE_FPS_DEFAULT
     send_fps = max(0.5, min(30.0, send_fps))
 
-    cap = acquire_camera()
-    if not cap.isOpened():
-        release_camera()
-        await websocket.send_json({"error": "Could not open camera"})
-        await websocket.close()
-        return
-
-    # Initialize all engines
-    eye_engine = EyeGuardianEngine()
-    light_analyzer = AmbientLightAnalyzer()
-    risk_engine = RiskFusionEngine()
-
-    # Start a DB session
-    session_id = db.start_session()
-    last_snapshot_time = 0.0
-    print(f"DB session {session_id} started")
-
-    posture_analyzer = None
-    if os.path.exists(POSTURE_MODEL_PATH):
-        try:
-            posture_analyzer = PostureAnalyzer(POSTURE_MODEL_PATH)
-            print("Posture analyzer initialized successfully")
-        except Exception as e:
-            print(f"Warning: Could not initialize posture analyzer: {e}")
-    else:
-        print(f"Warning: Posture model not found at {POSTURE_MODEL_PATH}")
+    camera_monitor.start(db)
 
     try:
-        last_analysis_time = 0.0
-        last_preview_time = 0.0
-        last_camera_frame_str = None
-        consecutive_read_failures = 0
-
-        # Keep last computed values so frontend never gets nil/placeholder
-        last_posture_data: Dict = {
-            "head_position": "N/A", "overall": "N/A",
-            "pitch": 0, "yaw": 0, "roll": 0,
-            "posture_risk": 0, "distance_cm": 50,
-            "distance_risk": 0, "posture_score": 100,
-        }
-        last_light_data: Dict = {"brightness": 0, "level": "Unknown", "risk": 0}
-
+        last_sent_time = 0.0
         while True:
-            loop_start = time.time()
-
-            ret, frame = cap.read()
-            if not ret:
-                consecutive_read_failures += 1
-                if consecutive_read_failures > MAX_CONSECUTIVE_FAILURES:
-                    await websocket.send_json({"error": "Camera lost after repeated failures"})
-                    break
-                await asyncio.sleep(0.033)  # wait ~1 frame before retry
-                continue
-            consecutive_read_failures = 0
-
-            frame = cv2.flip(frame, 1)
-
-            # --- Eye processing (blink, redness, EAR) ---
-            try:
-                # Downscale before heavy work to reduce CPU/memory
-                frame_small = cv2.resize(frame, (PREVIEW_WIDTH, PREVIEW_HEIGHT))
-                eye_data, annotated_frame = eye_engine.process_frame(frame_small, return_annotated=True)
-            except Exception as e:
-                eye_data = {"blinks": 0, "incomplete_blinks": 0, "redness": 0.0, "is_dry": False, "ear": 0.0}
-                annotated_frame = cv2.resize(frame, (PREVIEW_WIDTH, PREVIEW_HEIGHT))
-
+            # Check latest payload
+            payload, error = camera_monitor.get_latest()
+            
+            if error:
+                await websocket.send_json({"error": error})
+                break
+                
             now = time.time()
-
-            # --- Throttled analysis (posture/distance + ambient light) ---
-            if now - last_analysis_time >= ANALYSIS_INTERVAL_SEC:
-                last_analysis_time = now
-
-                # Posture & distance
-                if posture_analyzer:
-                    try:
-                        last_posture_data = posture_analyzer.analyze(frame_small)
-                    except Exception as e:
-                        print(f"[Posture] Error analyzing frame: {e}")
-                        import traceback
-                        traceback.print_exc()
-                        last_posture_data = {
-                            "head_position": "Error", "overall": "Unknown",
-                            "pitch": 0, "yaw": 0, "roll": 0,
-                            "posture_risk": 0, "distance_cm": 50,
-                            "distance_risk": 0, "posture_score": 100,
-                        }
-                else:
-                    last_posture_data = {
-                        "head_position": "N/A", "overall": "N/A",
-                        "pitch": 0, "yaw": 0, "roll": 0,
-                        "posture_risk": 0, "distance_cm": 50,
-                        "distance_risk": 0, "posture_score": 100,
-                    }
-
-                # Ambient light
-                try:
-                    last_light_data = light_analyzer.analyze(frame_small)
-                except Exception:
-                    last_light_data = {"brightness": 0, "level": "Unknown", "risk": 0}
-
-            # --- Blink rate (blinks in the last 60 seconds) ---
-            recent_blinks = sum(1 for t in eye_engine.blink_timestamps if now - t <= 60)
-
-            # --- Redness level ---
-            redness = eye_data.get("redness", 0.0)
-            if redness > 0.8:
-                redness_level = "High"
-            elif redness > 0.6:
-                redness_level = "Elevated"
-            else:
-                redness_level = "Normal"
-
-            # --- Risk fusion (uses same logic as light/risk_fusion.py) ---
-            blink_risk = 2 if recent_blinks < 10 else (1 if recent_blinks < 15 else 0)
-            redness_risk = 2 if redness > 0.8 else (1 if redness > 0.6 else 0)
-
-            risks = {
-                "blink": blink_risk,
-                "redness": redness_risk,
-                "posture": last_posture_data["posture_risk"] * 2,
-                "distance": last_posture_data["distance_risk"] * 2,
-                "lighting": last_light_data["risk"],
-            }
-            fusion = risk_engine.compute(risks)
-            strain_index = min(100, int(fusion["risk_score"] / 2.0 * 100))
-
-            # --- Preview encoding (smooth UX: always send last frame, refresh at send_fps) ---
-            if include_frame and (now - last_preview_time >= (1.0 / send_fps)):
-                last_preview_time = now
-                _, buffer = cv2.imencode(".jpg", annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, PREVIEW_JPEG_QUALITY])
-                frame_b64 = base64.b64encode(buffer).decode("utf-8")
-                last_camera_frame_str = f"data:image/jpeg;base64,{frame_b64}"
-                del buffer, frame_b64
-
-            # --- Build comprehensive payload ---
-            payload = {
-                "blink_rate": recent_blinks,
-                "distance_cm": last_posture_data["distance_cm"],
-                "posture_score": last_posture_data["posture_score"],
-                "ambient_light": round(last_light_data["brightness"]),
-                "overall_strain_index": strain_index,
-                "redness": round(redness, 2),
-                "camera_frame": last_camera_frame_str if include_frame else None,
-                "details": {
-                    "blink": {
-                        "ear": round(eye_data.get("ear", 0), 3),
-                        "total_blinks": eye_data.get("blinks", 0),
-                        "incomplete_blinks": eye_data.get("incomplete_blinks", 0),
-                        "is_dry": eye_data.get("is_dry", False),
-                    },
-                    "distance": {
-                        "value_cm": last_posture_data["distance_cm"],
-                        "risk_score": last_posture_data["distance_risk"],
-                        "status": (
-                            "Too Close" if last_posture_data["distance_risk"] >= 1.0
-                            else ("Too Far" if last_posture_data["distance_risk"] > 0 else "Safe")
-                        ),
-                    },
-                    "light": {
-                        "brightness": last_light_data["brightness"],
-                        "level": last_light_data["level"],
-                        "risk": last_light_data["risk"],
-                    },
-                    "posture": {
-                        "head_position": last_posture_data["head_position"],
-                        "overall": last_posture_data["overall"],
-                        "pitch": last_posture_data["pitch"],
-                        "yaw": last_posture_data["yaw"],
-                        "roll": last_posture_data["roll"],
-                        "risk": last_posture_data["posture_risk"],
-                    },
-                    "redness": {
-                        "score": round(redness, 2),
-                        "level": redness_level,
-                    },
-                    "risk_fusion": {
-                        "score": fusion["risk_score"],
-                        "level": fusion["risk_level"],
-                    },
-                },
-            }
-
-            await websocket.send_json(payload)
-
-            # ---- persist to DB every SNAPSHOT_INTERVAL seconds ----
-            now_db = time.time()
-            if now_db - last_snapshot_time >= SNAPSHOT_INTERVAL:
-                last_snapshot_time = now_db
-                try:
-                    # Save snapshot (strip camera_frame to keep DB small)
-                    snap_payload = {k: v for k, v in payload.items() if k != "camera_frame"}
-                    db.insert_snapshot(session_id, snap_payload)
-
-                    # Generate alerts for concerning metrics
-                    if strain_index >= 70:
-                        db.insert_alert(session_id, "high_strain", "danger",
-                                        f"Strain index critically high: {strain_index}%")
-                    elif strain_index >= 50:
-                        db.insert_alert(session_id, "elevated_strain", "warning",
-                                        f"Strain index elevated: {strain_index}%")
-
-                    if eye_data.get("is_dry", False):
-                        db.insert_alert(session_id, "dry_eyes", "warning",
-                                        f"Low blink rate ({recent_blinks}/min) – eyes may be dry")
-
-                    if last_posture_data["posture_risk"] >= 1.0:
-                        db.insert_alert(session_id, "bad_posture", "danger",
-                                        f"Poor posture detected: {last_posture_data['head_position']}")
-                    elif last_posture_data["posture_risk"] >= 0.5:
-                        db.insert_alert(session_id, "bad_posture", "warning",
-                                        f"Posture needs attention: {last_posture_data['head_position']}")
-
-                    if last_posture_data["distance_risk"] >= 1.0:
-                        db.insert_alert(session_id, "too_close", "warning",
-                                        f"Too close to screen: {last_posture_data['distance_cm']} cm")
-
-                    if last_light_data["risk"] >= 2:
-                        db.insert_alert(session_id, "bad_lighting", "warning",
-                                        f"Lighting is {last_light_data['level']} (brightness {last_light_data['brightness']:.0f})")
-                except Exception as db_err:
-                    print(f"[DB] Error saving snapshot/alert: {db_err}")
-
-            # Cap loop at TARGET_FPS to avoid hammering CPU / camera driver
-            elapsed = time.time() - loop_start
-            sleep_time = max(0.001, (1.0 / TARGET_FPS) - elapsed)
-            await asyncio.sleep(sleep_time)
+            if payload and (now - last_sent_time) >= (1.0 / send_fps):
+                last_sent_time = now
+                if not include_frame:
+                    payload = payload.copy()
+                    payload["camera_frame"] = None
+                await websocket.send_json(payload)
+                
+            await asyncio.sleep(0.05)
 
     except WebSocketDisconnect:
         print("Client disconnected from health stream")
     except Exception as e:
-        print(f"Error in health stream: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Error in subscriber stream: {e}")
     finally:
-        release_camera()
-        # Close the DB session
-        try:
-            db.end_session(session_id)
-            print(f"DB session {session_id} ended")
-        except Exception:
-            pass
-        print("Camera released (shared refcount decreased)")
+        camera_monitor.stop(db)
 
 
 # Keep /ws for backward compatibility (mock data matching new structure)
@@ -455,43 +430,43 @@ async def websocket_endpoint(websocket: WebSocket):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/sessions")
-async def api_sessions(limit: int = 20):
+def api_sessions(limit: int = 20):
     """Return recent monitoring sessions."""
     return db.get_sessions(limit)
 
 
 @app.get("/api/sessions/{session_id}/snapshots")
-async def api_session_snapshots(session_id: int, limit: int = 500):
+def api_session_snapshots(session_id: int, limit: int = 500):
     """Return snapshots for a specific session."""
     return db.get_snapshots(session_id=session_id, limit=limit)
 
 
 @app.get("/api/sessions/{session_id}/alerts")
-async def api_session_alerts(session_id: int, limit: int = 100):
+def api_session_alerts(session_id: int, limit: int = 100):
     """Return alerts for a specific session."""
     return db.get_alerts(session_id=session_id, limit=limit)
 
 
 @app.get("/api/snapshots")
-async def api_snapshots(limit: int = 500):
+def api_snapshots(limit: int = 500):
     """Return recent snapshots across all sessions."""
     return db.get_snapshots(limit=limit)
 
 
 @app.get("/api/alerts")
-async def api_alerts(limit: int = 100):
+def api_alerts(limit: int = 100):
     """Return recent alerts across all sessions."""
     return db.get_alerts(limit=limit)
 
 
 @app.get("/api/daily-summaries")
-async def api_daily_summaries(days: int = 30):
+def api_daily_summaries(days: int = 30):
     """Return daily summary data for charting."""
     return db.get_daily_summaries(days)
 
 
 @app.get("/api/daily-summaries/{iso_date}")
-async def api_daily_summary(iso_date: str):
+def api_daily_summary(iso_date: str):
     """Return summary for a specific date (YYYY-MM-DD)."""
     summary = db.get_daily_summary(iso_date)
     if summary is None:
@@ -500,13 +475,13 @@ async def api_daily_summary(iso_date: str):
 
 
 @app.get("/api/weekly-summaries")
-async def api_weekly_summaries(weeks: int = 12):
+def api_weekly_summaries(weeks: int = 12):
     """Return weekly summary data for charting (default: last 12 weeks)."""
     return db.get_weekly_summaries(weeks)
 
 
 @app.get("/api/weekly-summaries/{year}/{week}")
-async def api_weekly_summary(year: int, week: int):
+def api_weekly_summary(year: int, week: int):
     """Return summary for a specific ISO week."""
     summary = db.get_weekly_summary(year, week)
     if summary is None:
@@ -515,13 +490,13 @@ async def api_weekly_summary(year: int, week: int):
 
 
 @app.get("/api/monthly-summaries")
-async def api_monthly_summaries(months: int = 12):
+def api_monthly_summaries(months: int = 12):
     """Return monthly summary data for charting (default: last 12 months)."""
     return db.get_monthly_summaries(months)
 
 
 @app.get("/api/monthly-summaries/{year}/{month}")
-async def api_monthly_summary(year: int, month: int):
+def api_monthly_summary(year: int, month: int):
     """Return summary for a specific month."""
     summary = db.get_monthly_summary(year, month)
     if summary is None:
@@ -529,16 +504,16 @@ async def api_monthly_summary(year: int, month: int):
     return summary
 
 @app.get("/api/insights-data")
-async def api_insights_data():
+def api_insights_data():
     """Return the aggregated weekly/monthly stats used by AI insights."""
     return db.get_insights_data()
 
 @app.get("/api/ai-insights")
-async def get_ai_insights():
+def get_ai_insights():
     """Return cached or newly generated AI insights."""
     return insights_manager.get_insights()
 
 @app.post("/api/ai-insights/refresh")
-async def refresh_ai_insights():
+def refresh_ai_insights():
     """Manually trigger a fresh AI insight generation."""
     return insights_manager.get_insights(force_refresh=True)

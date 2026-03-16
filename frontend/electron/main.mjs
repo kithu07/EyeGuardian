@@ -726,15 +726,21 @@ function checkNotificationPermissions() {
         return;
     }
 
-    // macOS: Request permission explicitly and show setup dialog only if denied
+    // macOS: Show a test notification to trigger permission request
     if (platform === 'darwin') {
-        Notification.requestPermission().then(permission => {
-            if (permission !== 'granted' && !notificationSetupDialogShown) {
+        try {
+            new Notification({
+                title: 'EyeGuardian Started',
+                body: 'Notifications are working! You can minimize this app and it will continue monitoring in the background.',
+                silent: true
+            }).show();
+        } catch (err) {
+            if (!notificationSetupDialogShown) {
                 notificationSetupDialogShown = true;
                 showNotificationSetupDialog();
                 console.log('macOS notification permission denied, setup dialog shown');
             }
-        });
+        }
     }
     // Windows: Ensure app has a valid AppUserModelID and show a test notification
     else if (platform === 'win32') {
@@ -1277,13 +1283,8 @@ app.whenReady().then(() => {
             return { supported: false, granted: false };
         }
 
-        if (process.platform === 'darwin') {
-            const permission = await Notification.requestPermission();
-            return { supported: true, granted: permission === 'granted' };
-        }
-
-        // For Windows and Linux, we can't directly check permissions
-        // but we can check if notifications are supported
+        // For all platforms including macOS, Windows, and Linux running in Node.js
+        // via Electron Main Process, there's no direct web requestPermission API.
         return { supported: true, granted: true }; // Assume granted if supported
     });
 
