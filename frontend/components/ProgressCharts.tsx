@@ -260,7 +260,7 @@ const ProgressCharts = () => {
                     strokeWidth={2.5}
                     dot={{ r: 4, fill: COLORS.strain, strokeWidth: 0 }}
                     activeDot={{ r: 6, stroke: COLORS.strain, strokeWidth: 2, fill: "#0f172a" }}
-                    animationDuration={300}
+                    isAnimationActive={false}
                   />
                   <Line
                     type="monotone"
@@ -269,7 +269,7 @@ const ProgressCharts = () => {
                     strokeWidth={2.5}
                     dot={{ r: 4, fill: COLORS.blink, strokeWidth: 0 }}
                     activeDot={{ r: 6, stroke: COLORS.blink, strokeWidth: 2, fill: "#0f172a" }}
-                    animationDuration={300}
+                    isAnimationActive={false}
                   />
                   <Line
                     type="monotone"
@@ -278,7 +278,7 @@ const ProgressCharts = () => {
                     strokeWidth={2.5}
                     dot={{ r: 4, fill: COLORS.posture, strokeWidth: 0 }}
                     activeDot={{ r: 6, stroke: COLORS.posture, strokeWidth: 2, fill: "#0f172a" }}
-                    animationDuration={300}
+                    isAnimationActive={false}
                   />
                   <Line
                     type="monotone"
@@ -288,7 +288,7 @@ const ProgressCharts = () => {
                     dot={{ r: 4, fill: COLORS.redness, strokeWidth: 0 }}
                     activeDot={{ r: 6, stroke: COLORS.redness, strokeWidth: 2, fill: "#0f172a" }}
                     strokeDasharray="5 3"
-                    animationDuration={300}
+                    isAnimationActive={false}
                   />
                   <Line
                     type="monotone"
@@ -297,7 +297,7 @@ const ProgressCharts = () => {
                     strokeWidth={2.5}
                     dot={{ r: 4, fill: COLORS.distance, strokeWidth: 0 }}
                     activeDot={{ r: 6, stroke: COLORS.distance, strokeWidth: 2, fill: "#0f172a" }}
-                    animationDuration={300}
+                    isAnimationActive={false}
                   />
                 </LineChart>
               </ResponsiveContainer>
