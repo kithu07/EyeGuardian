@@ -170,8 +170,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                         <h3 className="text-lg font-semibold text-white mb-3">Audio</h3>
                         <div className="space-y-4">
                             <div>
-                                <label className="text-white font-medium">Alert Volume (In-App Only)</label>
-                                <p className="text-slate-400 text-xs mb-2">Audio alerts only play when app is active (not in background)</p>
+                                <label className="text-white font-medium">Alert Volume </label>
                                 <div className="flex items-center space-x-3 mt-2">
                                     <span className="text-slate-400 text-sm">🔇</span>
                                     <input
@@ -186,9 +185,6 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                                     <span className="text-white text-sm w-8">{soundVolume}%</span>
                                 </div>
                             </div>
-                            <div className="bg-slate-600 rounded p-3 text-xs text-slate-300">
-                                <strong>Note:</strong> Background mode uses only visual notifications (no audio) to prevent fatigue. Sounds play when the app window is active.
-                            </div>
                             <button
                                 onClick={() => {
                                     // Play via Web Audio API (volume controlled)
@@ -201,7 +197,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                                 }}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
                             >
-                                Test Sound (App Must Be Active)
+                                Test Sound
                             </button>
                         </div>
                     </div>
