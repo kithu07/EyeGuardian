@@ -12,10 +12,10 @@ class AmbientLightAnalyzer:
 
         if brightness < 60:
             level = "Dim"
-            risk = 2
+            risk = 4
         elif brightness > 180:
             level = "Harsh"
-            risk = 2
+            risk = 3
         else:
             level = "Good"
             risk = 0
