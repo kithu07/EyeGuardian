@@ -16,13 +16,13 @@ class AIInsightsManager:
         self._lock = threading.Lock()
         self.client = Groq(api_key=self.api_key)
 
-    def _get_data(self):
+    def _get_data(self, user_email: str = None):
         """Query the database for real weekly/monthly stats.
         Falls back to dummy JSON file if DB has no data."""
         # Try real DB first
         if self.db is not None:
             try:
-                data = self.db.get_insights_data()
+                data = self.db.get_insights_data(user_email)
                 # Check if we actually have data (non-empty weekly_stats)
                 if data.get("weekly_stats"):
                     return data
@@ -36,7 +36,7 @@ class AIInsightsManager:
 
         return {}
 
-    def get_insights(self, force_refresh: bool = False):
+    def get_insights(self, user_email: str = None, force_refresh: bool = False):
         if not force_refresh and os.path.exists(self.cache_path):
             with open(self.cache_path, 'r') as f:
                 cache = json.load(f)
@@ -44,9 +44,9 @@ class AIInsightsManager:
                 if time.time() - cache.get("timestamp", 0) < 3600:
                     return cache.get("insights")
 
-        return self.generate_insights()
+        return self.generate_insights(user_email)
 
-    def generate_insights(self):
+    def generate_insights(self, user_email: str = None):
         # Ensure only one request is sent at a time
         if not self._lock.acquire(blocking=False):
             return {
@@ -56,7 +56,7 @@ class AIInsightsManager:
             }
         
         try:
-            data = self._get_data()
+            data = self._get_data(user_email)
             w_raw = data.get('weekly_stats', {})
             m_raw = data.get('monthly_stats', {})
 

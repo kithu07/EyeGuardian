@@ -67,16 +67,18 @@ class GlobalCameraMonitor:
         self.running = False
         self.latest_payload = None
         self.session_id = None
+        self.user_email = None
         self.error_state = None
 
-    def start(self, db):
+    def start(self, db, user_email: str = None):
         with self.lock:
             self.refcount += 1
             if self.refcount == 1:
                 self.running = True
                 self.error_state = None
                 self.latest_payload = None
-                self.session_id = db.start_session()
+                self.user_email = user_email
+                self.session_id = db.start_session(user_email)
                 self.thread = threading.Thread(target=self._run_loop, args=(db,), daemon=True)
                 self.thread.start()
             return self.session_id
@@ -247,26 +249,26 @@ class GlobalCameraMonitor:
                     last_snapshot_time = now_db
                     try:
                         snap_payload = {k: v for k, v in payload.items() if k != "camera_frame"}
-                        db.insert_snapshot(self.session_id, snap_payload)
+                        db.insert_snapshot(self.session_id, snap_payload, self.user_email)
 
                         if strain_index >= 70:
-                            db.insert_alert(self.session_id, "high_strain", "danger", f"Strain index critically high: {strain_index}%")
+                            db.insert_alert(self.session_id, "high_strain", "danger", f"Strain index critically high: {strain_index}%", self.user_email)
                         elif strain_index >= 50:
-                            db.insert_alert(self.session_id, "elevated_strain", "warning", f"Strain index elevated: {strain_index}%")
+                            db.insert_alert(self.session_id, "elevated_strain", "warning", f"Strain index elevated: {strain_index}%", self.user_email)
 
                         if eye_data.get("is_dry", False):
-                            db.insert_alert(self.session_id, "dry_eyes", "warning", f"Low blink rate ({recent_blinks}/min) – eyes may be dry")
+                            db.insert_alert(self.session_id, "dry_eyes", "warning", f"Low blink rate ({recent_blinks}/min) – eyes may be dry", self.user_email)
 
                         if last_posture_data["posture_risk"] >= 1.0:
-                            db.insert_alert(self.session_id, "bad_posture", "danger", f"Poor posture detected: {last_posture_data['head_position']}")
+                            db.insert_alert(self.session_id, "bad_posture", "danger", f"Poor posture detected: {last_posture_data['head_position']}", self.user_email)
                         elif last_posture_data["posture_risk"] >= 0.5:
-                            db.insert_alert(self.session_id, "bad_posture", "warning", f"Posture needs attention: {last_posture_data['head_position']}")
+                            db.insert_alert(self.session_id, "bad_posture", "warning", f"Posture needs attention: {last_posture_data['head_position']}", self.user_email)
 
                         if last_posture_data["distance_risk"] >= 1.0:
-                            db.insert_alert(self.session_id, "too_close", "warning", f"Too close to screen: {last_posture_data['distance_cm']} cm")
+                            db.insert_alert(self.session_id, "too_close", "warning", f"Too close to screen: {last_posture_data['distance_cm']} cm", self.user_email)
 
                         if last_light_data["risk"] >= 2:
-                            db.insert_alert(self.session_id, "bad_lighting", "warning", f"Lighting is {last_light_data['level']} (brightness {last_light_data['brightness']:.0f})")
+                            db.insert_alert(self.session_id, "bad_lighting", "warning", f"Lighting is {last_light_data['level']} (brightness {last_light_data['brightness']:.0f})", self.user_email)
                     except Exception as db_err:
                         print(f"[DB] Error saving snapshot/alert: {db_err}")
 
@@ -329,8 +331,11 @@ async def health_stream_endpoint(websocket: WebSocket):
     except Exception:
         send_fps = PREVIEW_ENCODE_FPS_DEFAULT
     send_fps = max(0.5, min(30.0, send_fps))
+    
+    # Extract user email from query parameters
+    user_email = websocket.query_params.get("user")
 
-    camera_monitor.start(db)
+    camera_monitor.start(db, user_email)
 
     try:
         last_sent_time = 0.0
@@ -504,16 +509,16 @@ def api_monthly_summary(year: int, month: int):
     return summary
 
 @app.get("/api/insights-data")
-def api_insights_data():
+def api_insights_data(user: str = None):
     """Return the aggregated weekly/monthly stats used by AI insights."""
-    return db.get_insights_data()
+    return db.get_insights_data(user)
 
 @app.get("/api/ai-insights")
-def get_ai_insights():
+def get_ai_insights(user: str = None):
     """Return cached or newly generated AI insights."""
-    return insights_manager.get_insights()
+    return insights_manager.get_insights(user_email=user)
 
 @app.post("/api/ai-insights/refresh")
-def refresh_ai_insights():
+def refresh_ai_insights(user: str = None):
     """Manually trigger a fresh AI insight generation."""
-    return insights_manager.get_insights(force_refresh=True)
+    return insights_manager.get_insights(user_email=user, force_refresh=True)

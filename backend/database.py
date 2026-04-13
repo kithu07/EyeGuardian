@@ -25,6 +25,7 @@ DB_PATH = os.path.join(DB_DIR, "eyeguardian.db")
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS sessions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_email      TEXT,                      -- email of the logged-in user
     started_at      TEXT    NOT NULL,          -- ISO-8601
     ended_at        TEXT,                      -- ISO-8601, NULL while active
     duration_seconds INTEGER                   -- filled on session end
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS snapshots (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id       INTEGER NOT NULL REFERENCES sessions(id),
+    user_email       TEXT,                     -- email of the logged-in user
     timestamp        TEXT    NOT NULL,         -- ISO-8601
 
     -- eye / blink
@@ -73,6 +75,7 @@ CREATE TABLE IF NOT EXISTS snapshots (
 CREATE TABLE IF NOT EXISTS alerts (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id   INTEGER NOT NULL REFERENCES sessions(id),
+    user_email   TEXT,                         -- email of the logged-in user
     timestamp    TEXT    NOT NULL,
     alert_type   TEXT    NOT NULL,              -- e.g. high_strain, dry_eyes …
     severity     TEXT    NOT NULL,              -- warning | danger
@@ -81,7 +84,8 @@ CREATE TABLE IF NOT EXISTS alerts (
 
 CREATE TABLE IF NOT EXISTS daily_summaries (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-    date                  TEXT    NOT NULL UNIQUE,   -- YYYY-MM-DD
+    user_email            TEXT,                 -- email of the user
+    date                  TEXT    NOT NULL,     -- YYYY-MM-DD
     total_session_minutes REAL    DEFAULT 0,
     avg_blink_rate        REAL    DEFAULT 0,
     avg_distance_cm       REAL    DEFAULT 0,
@@ -91,11 +95,13 @@ CREATE TABLE IF NOT EXISTS daily_summaries (
     avg_redness           REAL    DEFAULT 0,
     alert_count           INTEGER DEFAULT 0,
     dry_eye_minutes       REAL    DEFAULT 0,
-    bad_posture_minutes   REAL    DEFAULT 0
+    bad_posture_minutes   REAL    DEFAULT 0,
+    UNIQUE(user_email, date)
 );
 
 CREATE TABLE IF NOT EXISTS weekly_summaries (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_email            TEXT,                 -- email of the user
     year                  INTEGER NOT NULL,
     week                  INTEGER NOT NULL,          -- ISO week number (1-53)
     week_start            TEXT    NOT NULL,           -- Monday YYYY-MM-DD
@@ -111,11 +117,12 @@ CREATE TABLE IF NOT EXISTS weekly_summaries (
     dry_eye_minutes       REAL    DEFAULT 0,
     bad_posture_minutes   REAL    DEFAULT 0,
     days_active           INTEGER DEFAULT 0,
-    UNIQUE(year, week)
+    UNIQUE(user_email, year, week)
 );
 
 CREATE TABLE IF NOT EXISTS monthly_summaries (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_email            TEXT,                 -- email of the user
     year                  INTEGER NOT NULL,
     month                 INTEGER NOT NULL,           -- 1-12
     total_session_minutes REAL    DEFAULT 0,
@@ -129,15 +136,20 @@ CREATE TABLE IF NOT EXISTS monthly_summaries (
     dry_eye_minutes       REAL    DEFAULT 0,
     bad_posture_minutes   REAL    DEFAULT 0,
     days_active           INTEGER DEFAULT 0,
-    UNIQUE(year, month)
+    UNIQUE(user_email, year, month)
 );
 
 CREATE INDEX IF NOT EXISTS idx_snapshots_session  ON snapshots(session_id);
+CREATE INDEX IF NOT EXISTS idx_snapshots_user     ON snapshots(user_email);
 CREATE INDEX IF NOT EXISTS idx_snapshots_ts       ON snapshots(timestamp);
 CREATE INDEX IF NOT EXISTS idx_alerts_session     ON alerts(session_id);
+CREATE INDEX IF NOT EXISTS idx_alerts_user        ON alerts(user_email);
 CREATE INDEX IF NOT EXISTS idx_daily_date         ON daily_summaries(date);
+CREATE INDEX IF NOT EXISTS idx_daily_user         ON daily_summaries(user_email);
 CREATE INDEX IF NOT EXISTS idx_weekly_yw          ON weekly_summaries(year, week);
+CREATE INDEX IF NOT EXISTS idx_weekly_user        ON weekly_summaries(user_email);
 CREATE INDEX IF NOT EXISTS idx_monthly_ym         ON monthly_summaries(year, month);
+CREATE INDEX IF NOT EXISTS idx_monthly_user       ON monthly_summaries(user_email);
 """
 
 
@@ -175,12 +187,12 @@ class EyeGuardianDB:
 
     # -- sessions ------------------------------------------------------------
 
-    def start_session(self) -> int:
+    def start_session(self, user_email: str = None) -> int:
         """Create a new monitoring session. Returns the session id."""
         conn = self._get_conn()
         cur = conn.execute(
-            "INSERT INTO sessions (started_at) VALUES (?)",
-            (datetime.now().isoformat(),),
+            "INSERT INTO sessions (user_email, started_at) VALUES (?, ?)",
+            (user_email, datetime.now().isoformat()),
         )
         conn.commit()
         return cur.lastrowid  # type: ignore[return-value]
@@ -189,6 +201,11 @@ class EyeGuardianDB:
         """Mark a session as ended and compute duration."""
         conn = self._get_conn()
         now = datetime.now().isoformat()
+        
+        # Get user_email from session before updating
+        row = conn.execute("SELECT user_email FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        user_email = row["user_email"] if row else None
+        
         conn.execute(
             """
             UPDATE sessions
@@ -203,13 +220,13 @@ class EyeGuardianDB:
         conn.commit()
         # Rebuild all summaries for today
         today = date.today()
-        self._rebuild_daily_summary(today.isoformat())
-        self._rebuild_weekly_summary(today)
-        self._rebuild_monthly_summary(today.year, today.month)
+        self._rebuild_daily_summary(today.isoformat(), user_email)
+        self._rebuild_weekly_summary(today, user_email)
+        self._rebuild_monthly_summary(today.year, today.month, user_email)
 
     # -- snapshots -----------------------------------------------------------
 
-    def insert_snapshot(self, session_id: int, payload: Dict[str, Any]):
+    def insert_snapshot(self, session_id: int, payload: Dict[str, Any], user_email: str = None):
         """
         Persist one metric snapshot.
         `payload` should match the JSON structure already sent over the WS.
@@ -226,7 +243,7 @@ class EyeGuardianDB:
         conn.execute(
             """
             INSERT INTO snapshots (
-                session_id, timestamp,
+                session_id, user_email, timestamp,
                 blink_rate, ear, total_blinks, incomplete_blinks, is_dry,
                 distance_cm, distance_risk,
                 brightness, light_level, light_risk,
@@ -235,7 +252,7 @@ class EyeGuardianDB:
                 redness, redness_level,
                 strain_index, risk_score, risk_level
             ) VALUES (
-                ?, ?,
+                ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?,
                 ?, ?, ?,
@@ -247,6 +264,7 @@ class EyeGuardianDB:
             """,
             (
                 session_id,
+                user_email,
                 datetime.now().isoformat(),
                 payload.get("blink_rate"),
                 blink.get("ear"),
@@ -282,58 +300,97 @@ class EyeGuardianDB:
         alert_type: str,
         severity: str,
         message: str,
+        user_email: str = None,
     ):
         conn = self._get_conn()
         conn.execute(
             """
-            INSERT INTO alerts (session_id, timestamp, alert_type, severity, message)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO alerts (session_id, user_email, timestamp, alert_type, severity, message)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (session_id, datetime.now().isoformat(), alert_type, severity, message),
+            (session_id, user_email, datetime.now().isoformat(), alert_type, severity, message),
         )
         conn.commit()
 
     # -- daily summaries -----------------------------------------------------
 
-    def _rebuild_daily_summary(self, iso_date: str):
+    def _rebuild_daily_summary(self, iso_date: str, user_email: str = None):
         """Recompute the daily summary row for `iso_date` (YYYY-MM-DD)."""
         conn = self._get_conn()
 
         # Total session minutes today
-        row = conn.execute(
-            """
-            SELECT COALESCE(SUM(duration_seconds), 0) / 60.0 AS total_min
-              FROM sessions
-             WHERE started_at LIKE ? || '%'
-               AND duration_seconds IS NOT NULL
-            """,
-            (iso_date,),
-        ).fetchone()
+        if user_email:
+            row = conn.execute(
+                """
+                SELECT COALESCE(SUM(duration_seconds), 0) / 60.0 AS total_min
+                  FROM sessions
+                 WHERE started_at LIKE ? || '%'
+                   AND duration_seconds IS NOT NULL
+                   AND user_email = ?
+                """,
+                (iso_date, user_email),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT COALESCE(SUM(duration_seconds), 0) / 60.0 AS total_min
+                  FROM sessions
+                 WHERE started_at LIKE ? || '%'
+                   AND duration_seconds IS NOT NULL
+                """,
+                (iso_date,),
+            ).fetchone()
         total_min = row["total_min"] if row else 0
 
         # Averages from snapshots today
-        avgs = conn.execute(
-            """
-            SELECT
-                AVG(blink_rate)    AS avg_blink,
-                AVG(distance_cm)   AS avg_dist,
-                AVG(posture_score) AS avg_posture,
-                AVG(brightness)    AS avg_bright,
-                AVG(strain_index)  AS avg_strain,
-                AVG(redness)       AS avg_redness,
-                SUM(CASE WHEN is_dry = 1 THEN 1 ELSE 0 END) AS dry_count,
-                SUM(CASE WHEN posture_risk >= 0.5 THEN 1 ELSE 0 END) AS bad_posture_count,
-                COUNT(*) AS total_snaps
-              FROM snapshots
-             WHERE timestamp LIKE ? || '%'
-            """,
-            (iso_date,),
-        ).fetchone()
+        if user_email:
+            avgs = conn.execute(
+                """
+                SELECT
+                    AVG(blink_rate)    AS avg_blink,
+                    AVG(distance_cm)   AS avg_dist,
+                    AVG(posture_score) AS avg_posture,
+                    AVG(brightness)    AS avg_bright,
+                    AVG(strain_index)  AS avg_strain,
+                    AVG(redness)       AS avg_redness,
+                    SUM(CASE WHEN is_dry = 1 THEN 1 ELSE 0 END) AS dry_count,
+                    SUM(CASE WHEN posture_risk >= 0.5 THEN 1 ELSE 0 END) AS bad_posture_count,
+                    COUNT(*) AS total_snaps
+                  FROM snapshots
+                 WHERE timestamp LIKE ? || '%'
+                   AND user_email = ?
+                """,
+                (iso_date, user_email),
+            ).fetchone()
+        else:
+            avgs = conn.execute(
+                """
+                SELECT
+                    AVG(blink_rate)    AS avg_blink,
+                    AVG(distance_cm)   AS avg_dist,
+                    AVG(posture_score) AS avg_posture,
+                    AVG(brightness)    AS avg_bright,
+                    AVG(strain_index)  AS avg_strain,
+                    AVG(redness)       AS avg_redness,
+                    SUM(CASE WHEN is_dry = 1 THEN 1 ELSE 0 END) AS dry_count,
+                    SUM(CASE WHEN posture_risk >= 0.5 THEN 1 ELSE 0 END) AS bad_posture_count,
+                    COUNT(*) AS total_snaps
+                  FROM snapshots
+                 WHERE timestamp LIKE ? || '%'
+                """,
+                (iso_date,),
+            ).fetchone()
 
-        alert_count_row = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM alerts WHERE timestamp LIKE ? || '%'",
-            (iso_date,),
-        ).fetchone()
+        if user_email:
+            alert_count_row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM alerts WHERE timestamp LIKE ? || '%' AND user_email = ?",
+                (iso_date, user_email),
+            ).fetchone()
+        else:
+            alert_count_row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM alerts WHERE timestamp LIKE ? || '%'",
+                (iso_date,),
+            ).fetchone()
         alert_count = alert_count_row["cnt"] if alert_count_row else 0
 
         # Estimate minutes from snapshot count (snapshots are ~30 s apart)
@@ -344,12 +401,12 @@ class EyeGuardianDB:
         conn.execute(
             """
             INSERT INTO daily_summaries (
-                date, total_session_minutes,
+                user_email, date, total_session_minutes,
                 avg_blink_rate, avg_distance_cm, avg_posture_score,
                 avg_brightness, avg_strain_index, avg_redness,
                 alert_count, dry_eye_minutes, bad_posture_minutes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(date) DO UPDATE SET
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_email, date) DO UPDATE SET
                 total_session_minutes = excluded.total_session_minutes,
                 avg_blink_rate        = excluded.avg_blink_rate,
                 avg_distance_cm       = excluded.avg_distance_cm,
@@ -362,6 +419,7 @@ class EyeGuardianDB:
                 bad_posture_minutes   = excluded.bad_posture_minutes
             """,
             (
+                user_email,
                 iso_date,
                 total_min,
                 avgs["avg_blink"] if avgs else 0,
@@ -386,7 +444,7 @@ class EyeGuardianDB:
         week_end = week_start + timedelta(days=6)           # Sunday
         return week_start, week_end
 
-    def _rebuild_weekly_summary(self, d: date):
+    def _rebuild_weekly_summary(self, d: date, user_email: str = None):
         """Recompute the weekly summary row for the ISO week containing `d`."""
         iso_year, iso_week, _ = d.isocalendar()
         week_start, week_end = self._iso_week_range(d)
@@ -395,39 +453,77 @@ class EyeGuardianDB:
 
         conn = self._get_conn()
 
-        row = conn.execute(
-            """
-            SELECT COALESCE(SUM(duration_seconds), 0) / 60.0 AS total_min
-              FROM sessions
-             WHERE started_at >= ? AND started_at <= ? || 'T23:59:59'
-               AND duration_seconds IS NOT NULL
-            """,
-            (start_str, end_str),
-        ).fetchone()
+        if user_email:
+            row = conn.execute(
+                """
+                SELECT COALESCE(SUM(duration_seconds), 0) / 60.0 AS total_min
+                  FROM sessions
+                 WHERE started_at >= ? AND started_at <= ? || 'T23:59:59'
+                   AND duration_seconds IS NOT NULL
+                   AND user_email = ?
+                """,
+                (start_str, end_str, user_email),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT COALESCE(SUM(duration_seconds), 0) / 60.0 AS total_min
+                  FROM sessions
+                 WHERE started_at >= ? AND started_at <= ? || 'T23:59:59'
+                   AND duration_seconds IS NOT NULL
+                """,
+                (start_str, end_str),
+            ).fetchone()
         total_min = row["total_min"] if row else 0
 
-        avgs = conn.execute(
-            """
-            SELECT
-                AVG(blink_rate)    AS avg_blink,
-                AVG(distance_cm)   AS avg_dist,
-                AVG(posture_score) AS avg_posture,
-                AVG(brightness)    AS avg_bright,
-                AVG(strain_index)  AS avg_strain,
-                AVG(redness)       AS avg_redness,
-                SUM(CASE WHEN is_dry = 1 THEN 1 ELSE 0 END) AS dry_count,
-                SUM(CASE WHEN posture_risk >= 0.5 THEN 1 ELSE 0 END) AS bad_posture_count,
-                COUNT(DISTINCT substr(timestamp, 1, 10)) AS days_active
-              FROM snapshots
-             WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59'
-            """,
-            (start_str, end_str),
-        ).fetchone()
+        if user_email:
+            avgs = conn.execute(
+                """
+                SELECT
+                    AVG(blink_rate)    AS avg_blink,
+                    AVG(distance_cm)   AS avg_dist,
+                    AVG(posture_score) AS avg_posture,
+                    AVG(brightness)    AS avg_bright,
+                    AVG(strain_index)  AS avg_strain,
+                    AVG(redness)       AS avg_redness,
+                    SUM(CASE WHEN is_dry = 1 THEN 1 ELSE 0 END) AS dry_count,
+                    SUM(CASE WHEN posture_risk >= 0.5 THEN 1 ELSE 0 END) AS bad_posture_count,
+                    COUNT(DISTINCT substr(timestamp, 1, 10)) AS days_active
+                  FROM snapshots
+                 WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59'
+                   AND user_email = ?
+                """,
+                (start_str, end_str, user_email),
+            ).fetchone()
+        else:
+            avgs = conn.execute(
+                """
+                SELECT
+                    AVG(blink_rate)    AS avg_blink,
+                    AVG(distance_cm)   AS avg_dist,
+                    AVG(posture_score) AS avg_posture,
+                    AVG(brightness)    AS avg_bright,
+                    AVG(strain_index)  AS avg_strain,
+                    AVG(redness)       AS avg_redness,
+                    SUM(CASE WHEN is_dry = 1 THEN 1 ELSE 0 END) AS dry_count,
+                    SUM(CASE WHEN posture_risk >= 0.5 THEN 1 ELSE 0 END) AS bad_posture_count,
+                    COUNT(DISTINCT substr(timestamp, 1, 10)) AS days_active
+                  FROM snapshots
+                 WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59'
+                """,
+                (start_str, end_str),
+            ).fetchone()
 
-        alert_row = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM alerts WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59'",
-            (start_str, end_str),
-        ).fetchone()
+        if user_email:
+            alert_row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM alerts WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59' AND user_email = ?",
+                (start_str, end_str, user_email),
+            ).fetchone()
+        else:
+            alert_row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM alerts WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59'",
+                (start_str, end_str),
+            ).fetchone()
         alert_count = alert_row["cnt"] if alert_row else 0
 
         dry_min = (avgs["dry_count"] or 0) * 0.5 if avgs else 0
@@ -437,13 +533,13 @@ class EyeGuardianDB:
         conn.execute(
             """
             INSERT INTO weekly_summaries (
-                year, week, week_start, week_end,
+                user_email, year, week, week_start, week_end,
                 total_session_minutes,
                 avg_blink_rate, avg_distance_cm, avg_posture_score,
                 avg_brightness, avg_strain_index, avg_redness,
                 alert_count, dry_eye_minutes, bad_posture_minutes, days_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(year, week) DO UPDATE SET
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_email, year, week) DO UPDATE SET
                 week_start            = excluded.week_start,
                 week_end              = excluded.week_end,
                 total_session_minutes = excluded.total_session_minutes,
@@ -459,6 +555,7 @@ class EyeGuardianDB:
                 days_active           = excluded.days_active
             """,
             (
+                user_email,
                 iso_year, iso_week, start_str, end_str,
                 total_min,
                 avgs["avg_blink"] if avgs else 0,
@@ -477,7 +574,7 @@ class EyeGuardianDB:
 
     # -- monthly summaries ---------------------------------------------------
 
-    def _rebuild_monthly_summary(self, year: int, month: int):
+    def _rebuild_monthly_summary(self, year: int, month: int, user_email: str = None):
         """Recompute the monthly summary row for the given year/month."""
         # Date range for the month
         month_start = date(year, month, 1).isoformat()
@@ -489,39 +586,77 @@ class EyeGuardianDB:
 
         conn = self._get_conn()
 
-        row = conn.execute(
-            """
-            SELECT COALESCE(SUM(duration_seconds), 0) / 60.0 AS total_min
-              FROM sessions
-             WHERE started_at >= ? AND started_at <= ? || 'T23:59:59'
-               AND duration_seconds IS NOT NULL
-            """,
-            (month_start, month_end_str),
-        ).fetchone()
+        if user_email:
+            row = conn.execute(
+                """
+                SELECT COALESCE(SUM(duration_seconds), 0) / 60.0 AS total_min
+                  FROM sessions
+                 WHERE started_at >= ? AND started_at <= ? || 'T23:59:59'
+                   AND duration_seconds IS NOT NULL
+                   AND user_email = ?
+                """,
+                (month_start, month_end_str, user_email),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT COALESCE(SUM(duration_seconds), 0) / 60.0 AS total_min
+                  FROM sessions
+                 WHERE started_at >= ? AND started_at <= ? || 'T23:59:59'
+                   AND duration_seconds IS NOT NULL
+                """,
+                (month_start, month_end_str),
+            ).fetchone()
         total_min = row["total_min"] if row else 0
 
-        avgs = conn.execute(
-            """
-            SELECT
-                AVG(blink_rate)    AS avg_blink,
-                AVG(distance_cm)   AS avg_dist,
-                AVG(posture_score) AS avg_posture,
-                AVG(brightness)    AS avg_bright,
-                AVG(strain_index)  AS avg_strain,
-                AVG(redness)       AS avg_redness,
-                SUM(CASE WHEN is_dry = 1 THEN 1 ELSE 0 END) AS dry_count,
-                SUM(CASE WHEN posture_risk >= 0.5 THEN 1 ELSE 0 END) AS bad_posture_count,
-                COUNT(DISTINCT substr(timestamp, 1, 10)) AS days_active
-              FROM snapshots
-             WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59'
-            """,
-            (month_start, month_end_str),
-        ).fetchone()
+        if user_email:
+            avgs = conn.execute(
+                """
+                SELECT
+                    AVG(blink_rate)    AS avg_blink,
+                    AVG(distance_cm)   AS avg_dist,
+                    AVG(posture_score) AS avg_posture,
+                    AVG(brightness)    AS avg_bright,
+                    AVG(strain_index)  AS avg_strain,
+                    AVG(redness)       AS avg_redness,
+                    SUM(CASE WHEN is_dry = 1 THEN 1 ELSE 0 END) AS dry_count,
+                    SUM(CASE WHEN posture_risk >= 0.5 THEN 1 ELSE 0 END) AS bad_posture_count,
+                    COUNT(DISTINCT substr(timestamp, 1, 10)) AS days_active
+                  FROM snapshots
+                 WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59'
+                   AND user_email = ?
+                """,
+                (month_start, month_end_str, user_email),
+            ).fetchone()
+        else:
+            avgs = conn.execute(
+                """
+                SELECT
+                    AVG(blink_rate)    AS avg_blink,
+                    AVG(distance_cm)   AS avg_dist,
+                    AVG(posture_score) AS avg_posture,
+                    AVG(brightness)    AS avg_bright,
+                    AVG(strain_index)  AS avg_strain,
+                    AVG(redness)       AS avg_redness,
+                    SUM(CASE WHEN is_dry = 1 THEN 1 ELSE 0 END) AS dry_count,
+                    SUM(CASE WHEN posture_risk >= 0.5 THEN 1 ELSE 0 END) AS bad_posture_count,
+                    COUNT(DISTINCT substr(timestamp, 1, 10)) AS days_active
+                  FROM snapshots
+                 WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59'
+                """,
+                (month_start, month_end_str),
+            ).fetchone()
 
-        alert_row = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM alerts WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59'",
-            (month_start, month_end_str),
-        ).fetchone()
+        if user_email:
+            alert_row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM alerts WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59' AND user_email = ?",
+                (month_start, month_end_str, user_email),
+            ).fetchone()
+        else:
+            alert_row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM alerts WHERE timestamp >= ? AND timestamp <= ? || 'T23:59:59'",
+                (month_start, month_end_str),
+            ).fetchone()
         alert_count = alert_row["cnt"] if alert_row else 0
 
         dry_min = (avgs["dry_count"] or 0) * 0.5 if avgs else 0
@@ -531,13 +666,13 @@ class EyeGuardianDB:
         conn.execute(
             """
             INSERT INTO monthly_summaries (
-                year, month,
+                user_email, year, month,
                 total_session_minutes,
                 avg_blink_rate, avg_distance_cm, avg_posture_score,
                 avg_brightness, avg_strain_index, avg_redness,
                 alert_count, dry_eye_minutes, bad_posture_minutes, days_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(year, month) DO UPDATE SET
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_email, year, month) DO UPDATE SET
                 total_session_minutes = excluded.total_session_minutes,
                 avg_blink_rate        = excluded.avg_blink_rate,
                 avg_distance_cm       = excluded.avg_distance_cm,
@@ -551,6 +686,7 @@ class EyeGuardianDB:
                 days_active           = excluded.days_active
             """,
             (
+                user_email,
                 year, month,
                 total_min,
                 avgs["avg_blink"] if avgs else 0,
@@ -656,7 +792,7 @@ class EyeGuardianDB:
 
     # -- insights data (replaces dummy_insights_data.json) --------------------
 
-    def get_insights_data(self) -> Dict[str, Any]:
+    def get_insights_data(self, user_email: str = None) -> Dict[str, Any]:
         """
         Return weekly and monthly aggregated stats in the same shape as
         the old dummy_insights_data.json so the AI insights manager can
@@ -665,14 +801,26 @@ class EyeGuardianDB:
         conn = self._get_conn()
 
         # Most recent weekly summary
-        w_row = conn.execute(
-            "SELECT * FROM weekly_summaries ORDER BY year DESC, week DESC LIMIT 1"
-        ).fetchone()
+        if user_email:
+            w_row = conn.execute(
+                "SELECT * FROM weekly_summaries WHERE user_email = ? ORDER BY year DESC, week DESC LIMIT 1",
+                (user_email,)
+            ).fetchone()
+        else:
+            w_row = conn.execute(
+                "SELECT * FROM weekly_summaries ORDER BY year DESC, week DESC LIMIT 1"
+            ).fetchone()
 
         # Most recent monthly summary
-        m_row = conn.execute(
-            "SELECT * FROM monthly_summaries ORDER BY year DESC, month DESC LIMIT 1"
-        ).fetchone()
+        if user_email:
+            m_row = conn.execute(
+                "SELECT * FROM monthly_summaries WHERE user_email = ? ORDER BY year DESC, month DESC LIMIT 1",
+                (user_email,)
+            ).fetchone()
+        else:
+            m_row = conn.execute(
+                "SELECT * FROM monthly_summaries ORDER BY year DESC, month DESC LIMIT 1"
+            ).fetchone()
 
         def _summary_dict(row) -> Dict[str, Any]:
             if row is None:

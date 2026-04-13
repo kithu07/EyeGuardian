@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 
-const AIInsights = () => {
+interface AIInsightsProps {
+  userEmail?: string;
+}
+
+const AIInsights: React.FC<AIInsightsProps> = ({ userEmail }) => {
     const [insights, setInsights] = useState<{ summary: string, improvements: string, tips: string[] } | null>(null);
     const [loading, setLoading] = useState(false);
 
@@ -9,7 +13,11 @@ const AIInsights = () => {
         try {
             const endpoint = refresh ? '/api/ai-insights/refresh' : '/api/ai-insights';
             const method = refresh ? 'POST' : 'GET';
-            const response = await fetch(`http://localhost:8000${endpoint}`, { method });
+            const url = new URL(`http://localhost:8000${endpoint}`);
+            if (userEmail) {
+                url.searchParams.append('user', userEmail);
+            }
+            const response = await fetch(url.toString(), { method });
             const data = await response.json();
             setInsights(data);
         } catch (error) {
@@ -21,7 +29,7 @@ const AIInsights = () => {
 
     useEffect(() => {
         fetchInsights();
-    }, []);
+    }, [userEmail]);
 
     // Remove early return to ensure container is always in layout
     // if (!insights && !loading) return null;

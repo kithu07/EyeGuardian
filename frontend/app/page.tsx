@@ -7,6 +7,9 @@ import LogPanel, { Log } from '@/components/LogPanel';
 import CameraPlaceholder from '@/components/CameraPlaceholder';
 import AIInsights from '@/components/AIInsights';
 import ProgressCharts from '@/components/ProgressCharts';
+import LoginScreen from '@/components/LoginScreen';
+import SignUpScreen from '@/components/SignUpScreen';
+import ProfileMenu from '@/components/ProfileMenu';
 
 // new components & helpers for modals and alerts
 import BreakReminderModal from '@/components/BreakReminderModal';
@@ -80,9 +83,54 @@ interface HealthState {
   details: HealthDetails | null;
 }
 
+interface AuthUser {
+  displayName: string;
+  email: string;
+  createdAt: number;
+  lastLoginAt: number;
+}
+
+interface RegisteredUser {
+  displayName: string;
+  email: string;
+  password: string;
+  createdAt: number;
+}
+
+const USERS_STORAGE_KEY = 'eyeguardian.registered.users';
+const CURRENT_SESSION_KEY = 'eyeguardian.current.session';
+
+function readStoredUsers(): RegisteredUser[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const storedUsers = localStorage.getItem(USERS_STORAGE_KEY);
+    return storedUsers ? JSON.parse(storedUsers) as RegisteredUser[] : [];
+  } catch (error) {
+    console.error('Failed to read registered users:', error);
+    return [];
+  }
+}
+
+function readStoredSession(): AuthUser | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const storedSession = localStorage.getItem(CURRENT_SESSION_KEY);
+    return storedSession ? JSON.parse(storedSession) as AuthUser : null;
+  } catch (error) {
+    console.error('Failed to read current session:', error);
+    return null;
+  }
+}
+
 // Electron API types are declared in ../types/electron.d.ts
 
-export default function Home() {
+function Dashboard({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const [healthState, setHealthState] = useState<HealthState>({
     blink_rate: 0,
     distance_cm: 0,
@@ -120,6 +168,7 @@ export default function Home() {
   const appVisibleRef = useRef(true);
   const lastMetricsUpdateMs = useRef(0);
   const METRICS_UPDATE_INTERVAL_MS = 500; // 2 FPS for stable UI (camera can still refresh faster)
+  const isMountedRef = useRef(true);
 
   // Helpers
   const addLog = useCallback((message: string, type: 'info' | 'warning' | 'danger' = 'info') => {
@@ -155,7 +204,8 @@ export default function Home() {
   useEffect(() => {
     const connectWebSocket = () => {
       if (!appVisibleRef.current) return;
-      const socket = new WebSocket('ws://localhost:8000/ws/health-stream?include_frame=1&send_fps=10');
+      const wsUrl = `ws://localhost:8000/ws/health-stream?include_frame=1&send_fps=10&user=${encodeURIComponent(user.email)}`;
+      const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
 
       socket.onopen = () => {
@@ -233,10 +283,14 @@ export default function Home() {
       };
 
       socket.onclose = () => {
-        // If app is hidden, we intentionally keep it disconnected to save resources
-        if (!appVisibleRef.current) return;
+        // If app is hidden or component unmounted, don't reconnect
+        if (!appVisibleRef.current || !isMountedRef.current) return;
         addLog('Connection lost. Reconnecting...', 'warning');
-        setTimeout(connectWebSocket, 3000);
+        setTimeout(() => {
+          if (isMountedRef.current) {
+            connectWebSocket();
+          }
+        }, 3000);
       };
     };
 
@@ -260,6 +314,7 @@ export default function Home() {
     }
 
     return () => {
+      isMountedRef.current = false;
       if (socketRef.current) {
         socketRef.current.close();
       }
@@ -337,6 +392,7 @@ export default function Home() {
               <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
               <span className="text-xs text-slate-300">System Online</span>
             </div>
+            <ProfileMenu displayName={user.displayName} email={user.email} onLogout={onLogout} />
           </div>
         </div>
 
@@ -412,7 +468,7 @@ export default function Home() {
 
         {/* AI Insights Section (Bottom) */}
         <div className="pt-4">
-          <AIInsights />
+          <AIInsights userEmail={user.email} />
         </div>
 
         {/* Progress Charts Section */}
@@ -440,4 +496,88 @@ export default function Home() {
       </div>
     </main>
   );
+}
+
+export default function Home() {
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [registeredUsers, setRegisteredUsers] = useState<RegisteredUser[]>([]);
+  const [authReady, setAuthReady] = useState(false);
+  const [showSignUp, setShowSignUp] = useState(false);
+
+  useEffect(() => {
+    const users = readStoredUsers();
+    const session = readStoredSession();
+    setRegisteredUsers(users);
+    setAuthUser(session);
+    setAuthReady(true);
+  }, []);
+
+  const handleSignUp = useCallback((profile: { displayName: string; email: string; password: string }) => {
+    const newUser: RegisteredUser = {
+      displayName: profile.displayName,
+      email: profile.email,
+      password: profile.password,
+      createdAt: Date.now(),
+    };
+
+    const updatedUsers = [...registeredUsers, newUser];
+    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updatedUsers));
+    setRegisteredUsers(updatedUsers);
+
+    // Auto-login after sign-up
+    const authSession: AuthUser = {
+      displayName: profile.displayName,
+      email: profile.email,
+      createdAt: Date.now(),
+      lastLoginAt: Date.now(),
+    };
+    localStorage.setItem(CURRENT_SESSION_KEY, JSON.stringify(authSession));
+    setAuthUser(authSession);
+    setShowSignUp(false);
+  }, [registeredUsers]);
+
+  const handleLogin = useCallback((email: string, password: string) => {
+    const user = registeredUsers.find(u => u.email === email);
+    if (user && user.password === password) {
+      const authSession: AuthUser = {
+        displayName: user.displayName,
+        email: user.email,
+        createdAt: user.createdAt,
+        lastLoginAt: Date.now(),
+      };
+      localStorage.setItem(CURRENT_SESSION_KEY, JSON.stringify(authSession));
+      setAuthUser(authSession);
+    }
+  }, [registeredUsers]);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem(CURRENT_SESSION_KEY);
+    setAuthUser(null);
+    setShowSignUp(false);
+  }, []);
+
+  if (!authReady) {
+    return <main className="min-h-screen w-screen bg-background text-foreground" />;
+  }
+
+  if (!authUser) {
+    if (showSignUp) {
+      return (
+        <SignUpScreen
+          onSignUp={handleSignUp}
+          onBackToLogin={() => setShowSignUp(false)}
+          existingEmails={registeredUsers.map(u => u.email)}
+        />
+      );
+    }
+    return (
+      <LoginScreen
+        onLogin={handleLogin}
+        onGoToSignUp={() => setShowSignUp(true)}
+        registeredUsers={registeredUsers}
+      />
+    );
+  }
+
+  return <Dashboard key={authUser.email} user={authUser} onLogout={handleLogout} />;
 }
