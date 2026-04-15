@@ -10,7 +10,9 @@
     "lint": "eslint",
     "electron:dev": "concurrently -k \"npm run dev\" \"wait-on tcp:3000 && NODE_ENV=development electron .\"",
     "electron:prod": "npm run build && NODE_ENV=production electron .",
-    "electron:build": "npm run build && NODE_ENV=production electron ."
+    "electron:build": "npm run build && NODE_ENV=production electron .",
+    "package:mac": "npm run build && electron-builder --mac",
+    "package:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
@@ -31,6 +33,7 @@
     "concurrently": "^9.2.1",
     "cross-env": "^7.0.3",
     "electron": "^39.2.7",
+    "electron-builder": "^26.8.1",
     "electron-serve": "^3.0.0",
     "electron-squirrel-startup": "^1.0.1",
     "eslint": "^9",
@@ -39,5 +42,32 @@
     "tailwindcss": "^3.4.19",
     "typescript": "^5",
     "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "com.eyeGuardian.EyeGuardian",
+    "productName": "EyeGuardian",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist/backend_dist",
+        "to": "backend_dist",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    }
   }
 }

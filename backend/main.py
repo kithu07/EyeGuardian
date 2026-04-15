@@ -25,8 +25,15 @@ from engine.eye_processor import EyeGuardianEngine
 from engine.posture_analyzer import PostureAnalyzer
 
 # Import light modules from the light/ directory without modifying originals
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_DIR = os.path.dirname(BASE_DIR)
+if getattr(sys, 'frozen', False):
+    # Run by pyinstaller
+    BUNDLE_DIR = sys._MEIPASS
+    BASE_DIR = BUNDLE_DIR
+    PROJECT_DIR = BUNDLE_DIR
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    PROJECT_DIR = os.path.dirname(BASE_DIR)
+
 sys.path.insert(0, os.path.join(PROJECT_DIR, "light"))
 
 from ambient_light import AmbientLightAnalyzer
@@ -35,6 +42,7 @@ from database import EyeGuardianDB
 from engine.ai_insights_manager import AIInsightsManager
 
 POSTURE_MODEL_PATH = os.path.join(PROJECT_DIR, "posture", "face_landmarker.task")
+
 
 # How often (seconds) to persist a snapshot row – keeps DB lean
 SNAPSHOT_INTERVAL = 30

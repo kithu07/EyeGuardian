@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import serve from 'electron-serve';
 import { createRequire } from 'module';
+import { spawn } from 'child_process';
 
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -26,6 +27,35 @@ if (process.platform === 'win32') {
 }
 
 const isDev = process.env.NODE_ENV === "development";
+
+let pythonProcess = null;
+
+function startBackend() {
+    if (pythonProcess) return;
+
+    if (app.isPackaged) {
+        let exeName = process.platform === 'win32' ? 'backend_dist.exe' : 'backend_dist';
+        const exePath = path.join(process.resourcesPath, 'backend_dist', exeName);
+        console.log(`Starting packaged backend: ${exePath}`);
+        pythonProcess = spawn(exePath, [], { stdio: 'pipe' });
+    } else {
+        const cwd = path.join(__dirname, '..', '..', 'backend');
+        console.log(`Starting dev backend in: ${cwd}`);
+        const pythonExe = process.platform === 'win32' 
+            ? path.join(cwd, 'venv', 'Scripts', 'python.exe')
+            : path.join(cwd, 'venv', 'bin', 'python');
+        pythonProcess = spawn(pythonExe, ['main.py'], { cwd, stdio: 'pipe' });
+    }
+
+    if(pythonProcess) {
+        pythonProcess.stdout.on('data', (data) => console.log(`[Backend] ${data}`));
+        pythonProcess.stderr.on('data', (data) => console.error(`[Backend ERR] ${data}`));
+        pythonProcess.on('close', (code) => {
+            console.log(`Backend process exited with code ${code}`);
+            pythonProcess = null;
+        });
+    }
+}
 
 let mainWindow = null;
 let tray = null;
@@ -1223,6 +1253,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+    startBackend();
     createWindow();
 
     // Setup system startup management
@@ -1338,6 +1369,12 @@ app.whenReady().then(() => {
             showMainWindow();
         }
     });
+});
+
+app.on('before-quit', () => {
+    if (pythonProcess) {
+        try { pythonProcess.kill(); } catch(e) {}
+    }
 });
 
 app.on('window-all-closed', function () {

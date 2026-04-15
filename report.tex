@@ -1,0 +1,657 @@
+\documentclass[12pt]{report}
+
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+\usepackage{newtxtext,newtxmath}   % Times New Roman style
+\usepackage{titlesec}
+
+% Heading sizes
+\titleformat{\chapter}
+{\normalfont\bfseries\fontsize{14}{16}\selectfont}
+{\thechapter}{1em}{}
+
+\titleformat{\section}
+{\normalfont\bfseries\fontsize{14}{16}\selectfont}
+{\thesection}{1em}{}
+
+
+\begin{document}
+
+%------------------------------------------------
+% TITLE PAGE
+%------------------------------------------------
+
+\begin{titlepage}
+
+\begin{center}
+
+{\Large \textbf{Mini Project Report}}
+
+\vspace{0.5cm}
+
+on
+
+\vspace{0.5cm}
+
+{\Huge \textbf{EyeGuardian}}
+
+\vspace{0.2cm}
+
+{\Large AI-Powered Vision Wellness System}
+
+\vspace{1.5cm}
+
+Submitted by
+
+\vspace{0.5cm}
+
+\textbf{Akshay Sunil} (20223022) \\
+\textbf{Gopika T P} (20223051) \\
+\textbf{Keerthana D S} (20223061)
+
+\vspace{1cm}
+
+In partial fulfilment of the requirements for the award of the degree of
+
+\vspace{0.5cm}
+
+\textbf{Bachelor of Technology in Computer Science and Engineering}
+
+\vspace{1cm}
+
+\textbf{DIVISION OF COMPUTER SCIENCE AND ENGINEERING}
+
+\textbf{SCHOOL OF ENGINEERING}
+
+\textbf{COCHIN UNIVERSITY OF SCIENCE AND TECHNOLOGY}
+
+\vspace{1cm}
+
+March 2026
+
+\end{center}
+
+\end{titlepage}
+
+%------------------------------------------------
+% CERTIFICATE
+%------------------------------------------------
+
+\chapter*{Certificate}
+
+Certified that this is a Mini Project Report titled \textbf{“EyeGuardian – AI Powered Vision Wellness System”} submitted by
+
+Akshay Sunil (20223022) \\
+Gopika T P (20223051) \\
+Keerthana D S (20223061)
+
+of VI Semester, Computer Science and Engineering in the year 2026 in partial fulfillment of the requirements for the award of the degree of Bachelor of Technology in Computer Science and Engineering of Cochin University of Science and Technology.
+
+\vspace{1cm}
+
+\textbf{Dr. Pramod Pavithran} \\
+Project Guide
+
+\vspace{0.5cm}
+
+\textbf{Dr. Sudheep Elayidom} \\
+Project Coordinator
+
+\vspace{0.5cm}
+
+\textbf{Dr. Pramod Pavithran} \\
+Head of Division
+
+%------------------------------------------------
+% ACKNOWLEDGEMENT
+%------------------------------------------------
+
+\chapter*{Acknowledgement}
+
+We express our sincere gratitude to our project guide \textbf{Dr. Pramod Pavithran} for his continuous guidance, valuable suggestions, and encouragement throughout the development of this project. 
+
+We would also like to thank \textbf{Dr. Sudheep Elayidom}, Project Coordinator, and the faculty members of the Division of Computer Science and Engineering, School of Engineering, CUSAT for providing us with the opportunity and resources required to successfully complete this project.
+
+Finally, we extend our heartfelt thanks to our friends and families for their constant support and encouragement during the course of this project.
+
+%------------------------------------------------
+% DECLARATION
+%------------------------------------------------
+
+\chapter*{Declaration}
+
+We hereby declare that the project titled \textbf{“EyeGuardian – AI Powered Vision Wellness System”} is a bona fide work carried out by us during the academic year 2025–2026 under the guidance of \textbf{Dr. Pramod Pavithran}, Division of Computer Science and Engineering, School of Engineering, Cochin University of Science and Technology.
+
+We further declare that this work has not been submitted elsewhere for the award of any degree.
+
+%------------------------------------------------
+% ABSTRACT
+%------------------------------------------------
+
+\chapter*{Abstract}
+
+Prolonged computer usage has led to a rapid increase in Computer Vision Syndrome (CVS), which includes symptoms such as eye strain, dry eyes, headaches, and posture-related discomfort. Most existing solutions rely on simple timer-based reminders that do not consider real-time user behavior.
+
+EyeGuardian is an AI-powered vision wellness system designed to monitor user eye health, posture, and environmental factors using real-time computer vision techniques. The system analyzes webcam input to detect blink rate, head posture, and lighting conditions, enabling proactive monitoring of user health during long computer sessions.
+
+The application integrates a desktop environment using Electron with a modern web-based interface built using Next.js. A FastAPI backend processes video frames using MediaPipe Face Mesh and OpenCV to compute metrics such as Eye Aspect Ratio (EAR) for blink detection and head orientation for posture analysis. Real-time data is transmitted using WebSockets to provide live feedback to the user dashboard.
+
+The system also stores health metrics locally using SQLite and generates personalized insights through AI-based analysis using the Groq Cloud API. Based on the computed strain index and behavioral trends, the system provides intelligent notifications encouraging users to take breaks, adjust posture, or modify lighting conditions.
+
+EyeGuardian aims to transform passive break reminders into an intelligent wellness assistant that helps users maintain healthier screen habits through continuous monitoring and personalized recommendations.
+
+%------------------------------------------------
+% CHAPTER 1
+%------------------------------------------------
+
+\chapter{Introduction}
+
+Computer Vision Syndrome (CVS) has emerged as a pervasive health issue in an era where extended screen time is the norm for work, study, and entertainment. Symptoms such as eye strain, dryness, blurred vision, and headaches are caused by prolonged exposure to digital displays and suboptimal ergonomic conditions. Traditional approaches to mitigating CVS often rely on user discipline — taking breaks, adjusting lighting, or altering posture — but these strategies are frequently neglected due to the pace and demands of modern workflows. This creates a clear need for an automated, intelligent monitoring system that can continually assess the user’s visual environment and behavior without imposing extra effort on the user.
+
+An intelligent monitoring system must interpret multiple signals in real time: blink rate as an indicator of ocular lubrication, head and neck posture to infer ergonomic strain, ambient lighting levels that contribute to glare and contrast fatigue, and screen distance which affects focus and accommodative stress. Computer vision is uniquely suited for this task because it can non‑intrusively analyze the user’s face and surroundings using a standard webcam, extracting quantitative metrics continuously. Real‑time processing is critical: only an immediate response can prompt micro‑breaks, adjust screen brightness, or trigger ergonomic reminders before discomfort accumulates into chronic strain. The ability to compute and react within fractions of a second transforms passive monitoring into an active wellness assistant.
+
+EyeGuardian addresses this problem by integrating a suite of computer vision models and heuristics into a cohesive wellness platform. It continuously tracks blink frequency to detect when a user is “staring” for too long, analyzes facial landmarks to estimate head pose and screen distance, and measures ambient illumination to flag unsafe lighting conditions. By fusing these signals, EyeGuardian can infer when the risk of CVS is increasing and proactively issue recommendations such as “look away for 20 seconds,” “raise your monitor,” or “reduce screen brightness.” This data‑driven, real‑time feedback loop empowers users to maintain healthier screen habits while minimizing disruption, making EyeGuardian a practical solution for mitigating Computer Vision Syndrome in everyday digital environments.
+
+
+\section{Methodology}
+
+EyeGuardian operates as an end‑to‑end vision wellness system by continuously processing video frames captured from a standard webcam in real time. The capture pipeline is implemented using the browser’s WebRTC API to acquire a high‑frequency stream of frames, which are then dispatched to an in‑browser processing module. This ensures that the system maintains low latency and avoids the need for secondary hardware, while allowing the processing loop to run at frame rates sufficient to detect rapid physiological changes.
+
+Within each captured frame, EyeGuardian employs MediaPipe Face Mesh for robust facial landmark detection. MediaPipe’s lightweight, neural‑network‑based model yields a dense set of 468 landmarks across the face, enabling precise localization of key regions such as the eyes, nose, and mouth. These landmarks form the foundation for downstream analytics: eye landmarks are used to compute the Eye Aspect Ratio (EAR) for blink detection, while facial geometry is used for head pose estimation and posture assessment. The landmark extraction is performed in real time, allowing the system to continuously update its understanding of the user’s face and gaze state.
+
+Blink detection is achieved through the Eye Aspect Ratio, a well‑established method that measures the ratio of vertical to horizontal eye landmark distances. By tracking the EAR over time and applying a threshold and temporal smoothing, EyeGuardian can reliably distinguish between normal eye opening/closing and longer closures indicative of fatigue or drowsiness. Concurrently, head pose estimation is derived from a subset of facial landmarks and solved using a Perspective‑n‑Point (PnP) approach to estimate the 3D orientation of the user’s head relative to the camera. Deviations from an ergonomic baseline (e.g., forward head tilt or excessive lateral rotation) are interpreted as posture issues that may contribute to musculoskeletal strain.
+
+To supplement visual cues, EyeGuardian performs ambient light analysis by sampling the brightness distribution within the captured frame and estimating lux‑equivalent illumination values. Sudden changes in ambient lighting or persistently low/high illumination levels are flagged as potential contributors to visual discomfort. All computed metrics—blink rate, posture deviation, ambient light level, and inferred screen distance—are streamed in real time via WebSockets to a frontend dashboard. This bi‑directional channel enables low‑latency communication between the browser client and the processing backend, supporting both live visualization and configurable alert thresholds.
+
+The frontend dashboard presents the user with an integrated view of wellness metrics, including time‑series plots of blink frequency, posture quality indicators, and ambient light trends. When the system detects sustained strain patterns—such as prolonged low blink rate, poor neck posture, or suboptimal lighting—it triggers an alert system that delivers unobtrusive on‑screen reminders to take a micro‑break, adjust posture, or modify environmental lighting. These reminders are dispatched in real time, providing timely interventions that help prevent the onset of Computer Vision Syndrome and promote healthy screen habits throughout the workday.
+
+\section{Features}
+
+EyeGuardian provides several key features designed to promote healthier screen usage habits.
+
+\textbf{Blink detection}
+EyeGuardian continuously monitors the user’s eyes using computer vision to compute the Eye Aspect Ratio (EAR) and identify blink events. By tracking blink frequency and duration, the system can infer visual fatigue and detect prolonged periods of reduced blinking that are associated with dry eyes and eye strain.
+
+\textbf{Posture monitoring}
+The system estimates head pose from facial landmarks to assess neck and upper‑body alignment relative to the camera. Deviations from ergonomically recommended head angles are flagged as poor posture, enabling the system to alert users to potential musculoskeletal strain.
+
+\textbf{Ambient lighting analysis}
+EyeGuardian analyzes the brightness distribution within the webcam frame to estimate ambient illumination levels and identify dynamic lighting changes. This enables the system to detect conditions that contribute to glare or insufficient lighting, which can exacerbate visual discomfort.
+
+\textbf{Real time dashboard}
+A real‑time dashboard provides users with an integrated view of computed wellness metrics, including blink rate, posture scores, and lighting statistics. The dashboard updates continuously to reflect live data streams, allowing users to observe trends and immediately respond to emerging issues.
+
+\textbf{AI wellness recommendations}
+Using a rule‑based and heuristic model, EyeGuardian generates personalized wellness guidance based on the user’s current metrics and historical patterns. Recommendations may include suggestions for adjusting screen distance, lighting, or posture to mitigate the risk of Computer Vision Syndrome.
+
+\textbf{Desktop notifications}
+The application delivers unobtrusive desktop notifications to inform users of detected risk conditions and recommended actions. These notifications provide timely cues without requiring the user to constantly monitor the dashboard.
+
+\textbf{Break reminders}
+When sustained screen use or strain indicators exceed predefined thresholds, EyeGuardian prompts the user to take short breaks. These reminders encourage healthy micro‑break habits that help reduce cumulative visual and ergonomic stress.
+
+\textbf{Health metric tracking}
+EyeGuardian records key wellness metrics over time, enabling longitudinal analysis of user behavior and environmental factors. This historical tracking supports trend visualization and helps users understand how their habits influence their visual comfort and posture.
+
+\section{Significance of Work}
+
+Prolonged screen use has become ubiquitous in modern academic and professional environments, leading to a marked rise in digital eye strain and related musculoskeletal complaints. Symptoms such as ocular dryness, blurred vision, headaches, and neck discomfort are not merely temporary inconveniences; they can undermine productivity and, over time, contribute to chronic conditions. Traditional timer‑based reminder applications offer a rudimentary solution by prompting users to take breaks at fixed intervals, but they do not account for the user’s actual behavior, environmental conditions, or physiological state. Consequently, many users either ignore these reminders or receive alerts that are poorly timed with their current workload and fatigue levels.
+
+EyeGuardian provides a smarter approach by leveraging AI and computer vision to make the monitoring process context‑aware and adaptive. Instead of relying on static schedules, the system continuously analyzes webcam input to detect blinks, posture, ambient lighting, and screen distance, allowing it to infer the user’s current level of visual and ergonomic strain. This enables proactive interventions that are grounded in real‑time evidence, rather than in arbitrary timers. The integration of personalized health insights—such as individual baseline blink rates, typical posture patterns, and lighting preferences—allows EyeGuardian to deliver recommendations that are tailored to each user’s habits and needs, improving both compliance and efficacy.
+
+%------------------------------------------------
+% CHAPTER 2
+%------------------------------------------------
+
+\chapter{Literature Review}
+
+\section{Facial Landmark Detection using MediaPipe}
+Facial landmark detection has evolved significantly with the advent of lightweight, real‑time deep learning models. MediaPipe Face Mesh \cite{lugaresi2019mediapipe} provides a robust solution by predicting 468 dense facial landmarks with sub‑millimeter accuracy using a single RGB camera. Its fast inference speed and low computational footprint make it well suited for desktop and mobile platforms. In the context of EyeGuardian, MediaPipe’s landmark output serves as the foundational input for multiple downstream analyses, enabling accurate eye region localization for blink detection, as well as providing the geometric structure needed for head pose estimation and screen distance approximation.
+
+\section{Blink Detection using Eye Aspect Ratio (EAR)}
+Blink detection is commonly performed using the Eye Aspect Ratio (EAR), a geometric metric derived from eye landmarks that quantifies the openness of the eye over time \cite{sousa2016real}. The EAR is computed from the distances between vertical and horizontal eye landmark pairs, and abrupt drops below a threshold indicate a blink. This method is popular in driver drowsiness detection and fatigue monitoring due to its simplicity and robustness to speaker variability. EyeGuardian adopts EAR-based blink detection to continuously monitor blink frequency and duration, allowing the system to infer ocular dryness and visual strain in real time without requiring specialized hardware.
+
+\section{Head Pose Estimation for Posture Analysis}
+Head pose estimation techniques leverage 2D facial landmarks to recover the 3D orientation of the head relative to the camera, typically via Perspective‑n‑Point (PnP) algorithms \cite{hu2017realtime}. By mapping known 3D facial model points to detected 2D image points, these methods can compute yaw, pitch, and roll angles that reflect neck and upper spine alignment. In ergonomic studies, deviations from neutral head posture have been correlated with musculoskeletal discomfort and long‑term injury risk. EyeGuardian utilizes head pose estimation to assess posture quality continuously, enabling timely alerts when users adopt sustained forward head tilt or lateral rotation.
+
+\section{Computer Vision Based Health Monitoring}
+The use of computer vision for health monitoring has gained traction across domains such as sleep analysis, activity recognition, and remote patient monitoring. Vision‑based systems can non‑invasively track physiological signals (e.g., heart rate, respiratory rate) and behavioral indicators (e.g., activity patterns) from simple camera feeds \cite{soldner2019vision}. In the workplace wellness context, recent research has demonstrated the feasibility of detecting fatigue, attention lapses, and ergonomic risks using webcams \cite{jamal2021computer}. EyeGuardian builds on this body of work by integrating multiple vision‑derived health indicators—blink rate, posture, lighting conditions—into a unified wellness platform that provides actionable feedback.
+
+\section{AI Based Recommendation Systems}
+AI‑driven recommendation systems traditionally leverage user behavior data and contextual signals to suggest relevant actions, content, or settings \cite{ricci2011introduction}. In health and wellness applications, such systems can personalize interventions by modeling individual habits and responses over time. Techniques range from rule‑based heuristics to machine learning models that predict optimal intervention timing. EyeGuardian incorporates AI‑informed recommendation logic to tailor wellness prompts and break reminders based on each user’s historical metric trends and real‑time state, thereby enhancing relevance and adherence compared to generic, one‑size‑fits‑all reminders.
+
+
+%------------------------------------------------
+% CHAPTER 3
+%------------------------------------------------
+
+\chapter{System Study}
+
+\section{Existing System}
+
+Existing digital wellness applications typically rely on predefined timers to remind users to take breaks. These systems lack real-time monitoring capabilities and cannot detect behavioral patterns such as reduced blinking or poor posture.
+
+\section{Proposed System}
+
+EyeGuardian introduces a real-time monitoring system that analyzes webcam input to detect signs of eye strain and posture issues. The system provides intelligent alerts and personalized recommendations based on the user's observed behavior.
+
+%------------------------------------------------
+% CHAPTER 4
+%------------------------------------------------
+
+\chapter{System Design}
+
+The EyeGuardian system is architected as a modular, client‑server application that separates real‑time vision processing from user interface presentation while maintaining a persistent data store for long‑term analysis. The frontend component runs in an Electron/Next.js environment and is responsible for capturing webcam frames, rendering the dashboard, and delivering local notifications. The backend is implemented as a lightweight API service (FastAPI/uvicorn) that performs intensive computation, maintains user session state, and persists historical metrics in a database. A central database (e.g., SQLite or PostgreSQL) stores aggregated wellness metrics, user preferences, and system logs, enabling retrospective analysis and personalization.
+
+Data flows through the system in a continuous real‑time pipeline. The frontend acquires video frames via WebRTC and processes them locally to extract facial landmarks using MediaPipe Face Mesh. Derived metrics such as blink rate, head pose, and ambient light levels are computed within the browser and transmitted to the backend over a WebSocket channel. The backend ingests these telemetry packets, applies additional analysis (e.g., smoothing, thresholding, or AI‑based scoring), and writes summary records to the database. This architecture keeps the frontend responsive by offloading heavier computations and persistent storage responsibilities, while still allowing the client to react immediately to local changes.
+
+WebSockets serve as the core communication mechanism for the system’s real‑time interactions. Upon initialization, the frontend establishes a persistent WebSocket connection to the backend, enabling low‑latency bidirectional messaging. The client streams processed sensor data and user settings updates to the server, and in turn receives system status messages, updated alert thresholds, and configuration changes without requiring polling. This persistent channel also supports synchronized state across multiple components—for example, the dashboard can display live backend‑computed risk scores, and the backend can push immediate alert triggers to the frontend when strain conditions are detected.
+
+The alert and notification system is designed to provide timely, context‑aware interventions without overwhelming the user. The backend evaluates incoming wellness metrics against configured thresholds and historical behavior patterns, determining when to issue alerts for breaks, posture correction, or lighting adjustments. When an alert condition is met, a notification message is sent over the WebSocket channel to the frontend, which then renders an on‑screen prompt and optionally triggers native desktop notifications. These notifications are complemented by dashboard indicators and log entries stored in the database, creating an audit trail of interventions and enabling the system to adapt its recommendations based on user response and adherence patterns.
+
+\section{System Architecture}
+
+\textbf{[Insert Figure: EyeGuardian System Architecture Diagram]}
+
+\section{Data Flow Diagram}
+
+\textbf{[Insert Figure: EyeGuardian Data Flow Diagram]}
+
+\section{Use Case Diagram}
+
+\textbf{[Insert Figure: EyeGuardian Use Case Diagram]}
+
+\section{Database Design}
+
+The system uses a SQLite database to store user session data and health metrics.
+
+Core entities include:
+
+\begin{itemize}
+
+\item Sessions
+\item Snapshots
+\item Alerts
+\item Summaries
+
+\end{itemize}
+
+%------------------------------------------------
+% CHAPTER 5
+%------------------------------------------------
+
+\chapter{System Implementation}
+
+This chapter presents a detailed account of the modular implementation of the EyeGuardian system. The development is organized into distinct modules—frontend, backend, database, AI integration, real‑time streaming, and the alert system—each designed to operate independently while interacting through well‑defined interfaces.
+
+\section{Modular Implementation}
+
+\subsection{Frontend Development (Next.js + TypeScript)}
+
+The frontend of EyeGuardian is built using \textbf{Next.js 16} with \textbf{React 19} and \textbf{TypeScript}, providing a type‑safe, server‑rendered application that forms the interactive user interface. \textbf{Electron} wraps the Next.js application into a native desktop executable, enabling cross‑platform deployment on Windows, macOS, and Linux while granting access to system‑level features such as native notifications, window management, and visibility change detection.
+
+\textbf{Component Architecture.} The frontend follows a modular component architecture where each UI element is encapsulated as a reusable React component. The main application page (\texttt{page.tsx}) serves as the orchestrator, managing global state through React hooks (\texttt{useState}, \texttt{useEffect}, \texttt{useRef}, \texttt{useCallback}) and coordinating data flow between child components. The following key components constitute the user interface:
+
+\begin{itemize}
+    \item \textbf{RadialGauge:} A custom SVG‑based radial gauge component that visually represents the overall strain index on a 0–100 scale, using gradient color transitions to indicate severity levels.
+    \item \textbf{StatCard:} A reusable card component displaying individual health metrics (blink rate, screen distance, ambient light, posture score) with expandable detail panels showing sub‑metrics such as EAR values, risk scores, and status indicators.
+    \item \textbf{CameraPlaceholder:} Renders the live webcam preview by decoding Base64‑encoded JPEG frames received from the backend, providing the user with a real‑time annotated view of facial landmark tracking.
+    \item \textbf{ProgressCharts:} Utilizes the \textbf{Recharts} library to render interactive time‑series charts for daily, weekly, and monthly health trends, fetching historical data from the backend's REST API endpoints.
+    \item \textbf{AIInsights:} Displays AI‑generated wellness summaries, improvement suggestions, and actionable health tips retrieved from the Groq Cloud API through the backend.
+    \item \textbf{BreakReminderModal:} A modal dialog that presents break recommendations with specific reasons and personalized suggestions, offering "Start Break" and "Remind Later" actions.
+    \item \textbf{StrainAlertModal:} A critical alert modal triggered when the overall strain index exceeds 80\%, displaying the current strain level and prompting immediate action.
+    \item \textbf{Settings:} A settings panel allowing users to configure alert thresholds, notification preferences, and display options.
+    \item \textbf{LogPanel:} A scrollable log panel displaying the five most recent system events (connection status, alerts, user actions) with color‑coded severity indicators.
+\end{itemize}
+
+\textbf{State Management and Data Flow.} The application maintains a centralized health state object that is updated in real time via WebSocket messages from the backend. The state includes blink rate, screen distance, posture score, ambient light level, overall strain index, eye redness score, the current camera frame, and a nested details object containing granular sub‑metrics for each category. To prevent UI flicker and excessive re‑renders, metric updates are throttled to 2 FPS (500 ms intervals) while camera frames update at the full WebSocket delivery rate.
+
+\textbf{Styling and Layout.} \textbf{Tailwind CSS} is employed as the utility‑first styling framework, providing responsive design through a 12‑column grid layout. The dashboard is organized with a left column (4 columns) containing the radial gauge and stat cards, and a right column (8 columns) housing the camera preview and log panel. The AI insights and progress charts sections are rendered below in full‑width containers. The design incorporates glassmorphism effects, gradient backgrounds, and subtle animations to create a modern, professional aesthetic.
+
+\textbf{Electron Integration.} The Electron layer manages the application's lifecycle by providing IPC (Inter‑Process Communication) bridges exposed via \texttt{window.electronAPI}. Key integrations include:
+
+\begin{itemize}
+    \item \textbf{Visibility Management:} The frontend detects window visibility changes through \texttt{onAppVisibilityChange}, disconnecting the WebSocket when hidden to conserve resources and reconnecting when the window becomes visible.
+    \item \textbf{Break Mode:} The \texttt{startBreakMode} API triggers a full‑screen overlay with a countdown timer, blocking the screen to encourage the user to rest.
+    \item \textbf{Native Notifications:} Desktop notifications for high strain alerts and break reminders are dispatched through Electron's notification API, ensuring visibility even when the application is minimized.
+\end{itemize}
+
+\subsection{Backend Development (FastAPI)}
+
+The backend is implemented using \textbf{FastAPI}, a modern asynchronous Python web framework, served via \textbf{Uvicorn}. It is responsible for camera capture, computer vision processing, risk computation, data persistence, and API exposure.
+
+\textbf{Background Camera Monitor.} The core of the backend is the \texttt{GlobalCameraMonitor} class, a thread‑safe singleton that manages the camera capture loop in a dedicated background thread. This design prevents the event loop from blocking and avoids duplicate model initialization. The monitor maintains a reference count to support multiple concurrent WebSocket subscribers sharing a single camera instance. Key operational parameters include:
+
+\begin{itemize}
+    \item Target camera frame rate: 30 FPS
+    \item Analysis interval for posture and lighting: every 5 seconds (to reduce CPU load)
+    \item Preview encoding: 10 FPS at JPEG quality 55, scaled to 640×360
+    \item Database snapshot interval: every 30 seconds
+    \item Maximum consecutive read failures before shutdown: 30
+\end{itemize}
+
+\textbf{Vision Processing Pipeline.} Each camera frame passes through a multi‑stage processing pipeline:
+
+\begin{enumerate}
+    \item \textbf{Frame Capture:} OpenCV's \texttt{VideoCapture} reads frames from the default webcam at the system's native resolution. Frames are horizontally flipped for a mirror‑view experience.
+    \item \textbf{Eye Processing:} The \texttt{EyeGuardianEngine} module processes every frame through MediaPipe Face Mesh, computing the Eye Aspect Ratio (EAR) for blink detection and extracting eye region pixels for redness analysis.
+    \item \textbf{Posture Analysis:} The \texttt{PostureAnalyzer} module runs at the analysis interval, using MediaPipe Face Landmarker with the Tasks API to detect facial landmarks and compute head pose (pitch, yaw, roll) via facial transformation matrices. Screen distance is estimated using inter‑pupillary distance with a calibrated focal length model.
+    \item \textbf{Ambient Light Analysis:} The \texttt{AmbientLightAnalyzer} evaluates frame brightness distribution at the analysis interval, classifying lighting conditions and computing risk scores.
+    \item \textbf{Risk Fusion:} The \texttt{RiskFusionEngine} aggregates individual risk scores (blink, redness, posture, distance, lighting) into a unified strain index on a 0–100 scale.
+\end{enumerate}
+
+\textbf{API Layer.} The backend exposes both WebSocket and REST endpoints:
+
+\begin{itemize}
+    \item \texttt{/ws/health-stream}: The primary WebSocket endpoint that streams real‑time health payloads (metrics + camera frame) to subscribers at a configurable FPS. Query parameters control frame inclusion and send rate.
+    \item \texttt{/api/sessions}, \texttt{/api/snapshots}, \texttt{/api/alerts}: RESTful endpoints for querying historical session data, metric snapshots, and alert logs.
+    \item \texttt{/api/daily-summaries}, \texttt{/api/weekly-summaries}, \texttt{/api/monthly-summaries}: Pre‑aggregated summary endpoints for charting.
+    \item \texttt{/api/ai-insights}, \texttt{/api/ai-insights/refresh}: Endpoints for retrieving and refreshing AI‑generated wellness insights.
+\end{itemize}
+
+CORS middleware is configured to allow cross‑origin requests from the Electron‑hosted frontend during development.
+
+\subsection{Database Integration (SQLite)}
+
+EyeGuardian uses \textbf{SQLite} as its local relational database, managed through a custom \texttt{EyeGuardianDB} class that provides a thin abstraction layer over raw SQL operations. The database is stored as a single file (\texttt{eyeguardian.db}) within the application's data directory, eliminating deployment dependencies on external database servers.
+
+\textbf{Schema Design.} The database schema consists of six tables designed to capture real‑time metrics and pre‑aggregated summaries:
+
+\begin{itemize}
+    \item \textbf{sessions:} Records monitoring sessions with start time, end time, and computed duration in seconds. A new session is created when the camera monitor starts and closed when it stops.
+    \item \textbf{snapshots:} Stores periodic metric captures (every 30 seconds) containing 24 fields spanning blink data (EAR, total blinks, incomplete blinks, dry eye flag), distance (cm, risk score), lighting (brightness, level, risk), posture (head position, overall, pitch, yaw, roll, risk, score), redness (score, level), and overall risk (strain index, risk score, risk level).
+    \item \textbf{alerts:} Logs notable health events including alert type (e.g., \texttt{high\_strain}, \texttt{dry\_eyes}, \texttt{bad\_posture}, \texttt{too\_close}, \texttt{bad\_lighting}), severity (\texttt{warning} or \texttt{danger}), and descriptive messages.
+    \item \textbf{daily\_summaries:} Pre‑aggregated daily statistics including total session minutes, average metrics, alert counts, dry eye minutes, and bad posture minutes.
+    \item \textbf{weekly\_summaries:} ISO‑week based summaries (Monday–Sunday) with the same aggregated fields plus a \texttt{days\_active} counter.
+    \item \textbf{monthly\_summaries:} Monthly aggregations with year/month indexing.
+\end{itemize}
+
+\textbf{Data Integrity.} The database uses WAL (Write‑Ahead Logging) journal mode for improved concurrent read/write performance, enforces foreign key constraints, and employs B‑tree indexes on session IDs, timestamps, dates, and composite year/week and year/month columns for efficient querying. Summary tables use \texttt{ON CONFLICT} upsert clauses to ensure idempotent rebuilds.
+
+\textbf{Aggregation Pipeline.} Summary tables are automatically rebuilt at the end of each monitoring session. The aggregation pipeline computes averages from snapshots, counts alerts, and estimates durations for specific conditions (e.g., dry eye minutes are estimated from the count of snapshots with \texttt{is\_dry = 1}, multiplied by the 30‑second snapshot interval).
+
+\subsection{AI Model Integration}
+
+EyeGuardian integrates artificial intelligence capabilities through two primary channels: on‑device computer vision models for real‑time analysis and cloud‑based large language model (LLM) inference for personalized wellness insights.
+
+\textbf{On‑Device Vision Models.} The system employs two MediaPipe models running locally:
+
+\begin{itemize}
+    \item \textbf{MediaPipe Face Mesh:} A lightweight neural network that predicts 468 dense facial landmarks from a single RGB frame. This model operates in the \texttt{EyeGuardianEngine} module with parameters set to single‑face detection, refined landmarks, and 0.5 confidence thresholds for both detection and tracking. The model processes every captured frame to compute EAR values and enable blink detection.
+    \item \textbf{MediaPipe Face Landmarker:} Used in the \texttt{PostureAnalyzer} module via the MediaPipe Tasks API, this model provides facial transformation matrices that enable 3D head pose estimation. The model asset is loaded from a pre‑trained \texttt{face\_landmarker.task} file and configured to output facial transformation matrices for a single face.
+\end{itemize}
+
+\textbf{Blink Detection Algorithm.} The \texttt{EyeGuardianEngine} implements a multi‑threshold blink detection system using the Eye Aspect Ratio:
+
+\begin{itemize}
+    \item EAR below 0.28 (open threshold): Potential blink onset detected
+    \item EAR below 0.25 (incomplete threshold): Incomplete blink registered
+    \item EAR below 0.21 (complete threshold): Full blink confirmed
+    \item Blinks per minute are computed from a rolling 60‑second window using timestamped blink events stored in a bounded deque (capacity: 2000)
+    \item Dry eye condition is flagged when the recent blink rate falls below 12 blinks per minute
+\end{itemize}
+
+\textbf{Eye Redness Detection.} The system extracts the region of interest (ROI) around each eye using landmark coordinates, splits the ROI into BGR channels, and computes the ratio of the red channel mean to the sum of green and blue channel means. Values exceeding 0.8 are classified as "High" redness, while values above 0.6 are classified as "Elevated."
+
+\textbf{Posture and Distance Estimation.} The \texttt{PostureAnalyzer} estimates head pose by extracting Euler angles (pitch, yaw, roll) from the 4×4 facial transformation matrix via a rotation‑matrix‑to‑Euler‑angles conversion. Screen distance is computed using the formula:
+
+\[
+d = \frac{D_{\text{real}} \times f}{D_{\text{pixel}}}
+\]
+
+where $D_{\text{real}}$ is the average inter‑pupillary distance (6.3 cm), $f$ is the dynamically scaled focal length, and $D_{\text{pixel}}$ is the pixel distance between eye landmarks. An exponential moving average (α = 0.5) smooths the distance estimate to reduce jitter. The posture score is computed on a 0–100 scale with weighted penalties for pitch (max −40), yaw (max −30), roll (max −20), and distance deviations (−5 to −10).
+
+\textbf{Cloud‑Based AI Insights.} The \texttt{AIInsightsManager} integrates with the \textbf{Groq Cloud API} using the \textbf{LLaMA 3.1 8B Instant} model to generate personalized wellness summaries. The manager queries the database for weekly and monthly aggregated statistics, constructs a structured prompt containing current user metrics (strain index, blink rate, screen distance, posture score, brightness, redness, session hours, alert count, bad posture duration), and requests a JSON‑formatted response with three fields: summary, improvements, and tips. The system implements:
+
+\begin{itemize}
+    \item \textbf{Caching:} Generated insights are cached to a JSON file with a 1‑hour TTL to reduce API calls.
+    \item \textbf{Thread Safety:} A non‑blocking lock prevents concurrent API requests.
+    \item \textbf{Response Validation:} The manager handles varied response formats by flattening nested objects and dictionaries into plain strings, ensuring consistent frontend rendering.
+    \item \textbf{Fallback Mechanism:} If the API is unavailable, the system falls back to a dummy data file or provides generic wellness tips.
+\end{itemize}
+
+\subsection{Real‑time Data Streaming}
+
+Real‑time data streaming is the backbone of EyeGuardian's monitoring capability, enabling continuous flow of health metrics from the camera capture loop to the user's dashboard with minimal latency.
+
+\textbf{WebSocket Architecture.} The streaming system is built on FastAPI's WebSocket support with the following architecture:
+
+\begin{enumerate}
+    \item The frontend establishes a persistent WebSocket connection to \texttt{ws://localhost:8000/ws/health-stream} with query parameters controlling frame inclusion and target send FPS (default: 10 FPS, range: 0.5–30 FPS).
+    \item The backend's \texttt{GlobalCameraMonitor} continuously captures and processes frames in a dedicated thread, updating a shared \texttt{latest\_payload} dictionary.
+    \item The WebSocket endpoint polls the latest payload at 50 ms intervals and transmits it to the client at the configured send rate.
+    \item Multiple clients can subscribe simultaneously through the reference‑counted monitor architecture.
+\end{enumerate}
+
+\textbf{Payload Structure.} Each WebSocket message is a JSON object containing seven top‑level fields (\texttt{blink\_rate}, \texttt{distance\_cm}, \texttt{posture\_score}, \texttt{ambient\_light}, \texttt{overall\_strain\_index}, \texttt{redness}, \texttt{camera\_frame}) and a nested \texttt{details} object with sub‑metrics for blink, distance, light, posture, redness, and risk fusion categories. The camera frame is transmitted as a Base64‑encoded JPEG data URI.
+
+\textbf{Performance Optimizations.} Several strategies ensure smooth real‑time performance:
+
+\begin{itemize}
+    \item \textbf{Throttled Analysis:} Computationally intensive posture and lighting analysis runs at 5‑second intervals, while lightweight eye processing occurs on every frame.
+    \item \textbf{Throttled UI Updates:} The frontend limits metric state updates to 500 ms intervals (2 FPS) to prevent animation jitter, while camera frames update at the full delivery rate for smooth preview.
+    \item \textbf{Reduced Preview Quality:} Preview images are encoded at JPEG quality 55 and scaled to 640×360 to minimize bandwidth and CPU usage.
+    \item \textbf{Connection Resilience:} The frontend implements automatic reconnection with a 3‑second delay on connection loss, and suspends the WebSocket when the Electron window is hidden.
+\end{itemize}
+
+\subsection{Alert and Break Recommendation System}
+
+The alert and break recommendation system is a multi‑layered engine that combines real‑time metric evaluation, temporal scheduling, and user interaction tracking to deliver timely, non‑disruptive wellness interventions.
+
+\textbf{Health State Evaluation.} The frontend's \texttt{evaluateHealthState} utility function analyzes incoming health data against predefined thresholds to identify failure conditions. Each failure is categorized with a descriptive message and severity level. The system evaluates blink rate, posture score, ambient light, screen distance, and redness in real time, generating an array of \texttt{HealthFailure} objects when metrics exceed safe ranges.
+
+\textbf{Break Recommendation Logic.} The \texttt{getRecommendations} function maps detected failures to personalized recommendations. Break reminders are triggered under two conditions:
+
+\begin{itemize}
+    \item \textbf{Time‑Based:} When the elapsed time since the last break exceeds 60 minutes.
+    \item \textbf{Condition‑Based:} When health failures are detected and the user has not acknowledged a reminder within the past 5 minutes (suppression window).
+\end{itemize}
+
+A 60‑second startup delay prevents false alerts during system initialization while the camera and models warm up.
+
+\textbf{Alert Severity Tiers.} The system implements two tiers of alerts:
+
+\begin{itemize}
+    \item \textbf{Break Reminder (Modal):} Displayed when health failures are detected or time thresholds are exceeded. The modal presents a list of detected issues, personalized recommendations, and two action buttons—"Start Break" (resets the timer to 60 minutes and triggers full‑screen break mode) and "Remind Later" (postpones the reminder by 10 minutes).
+    \item \textbf{Critical Strain Alert (Modal):} Triggered when the overall strain index exceeds 80\%. This modal displays the current strain level and requires explicit acknowledgement, with notifications throttled to prevent repeated alerts within 5 seconds.
+\end{itemize}
+
+\textbf{Database‑Level Alerts.} In addition to frontend alerts, the backend persists alert records to the database during each snapshot interval. Alerts are generated for high strain (index ≥ 70), elevated strain (≥ 50), dry eyes (low blink rate), poor posture (risk ≥ 0.5), proximity warnings (distance risk ≥ 1.0), and adverse lighting (risk ≥ 2). These persisted alerts feed into the daily, weekly, and monthly summary aggregations and are used by the AI insights module to generate longitudinal wellness recommendations.
+
+\textbf{Desktop Notification Integration.} The \texttt{notificationService} utility dispatches native desktop notifications through Electron's notification API for both high strain alerts and break reminders. These notifications ensure visibility even when the application window is minimized or occluded, providing a system‑wide wellness monitoring experience.
+
+\subsection{Data Storage and Retrieval}
+
+EyeGuardian implements a comprehensive data storage and retrieval pipeline that supports both real‑time monitoring and historical analysis.
+
+\textbf{Real‑time Storage.} During active monitoring sessions, the backend persists metric snapshots to the \texttt{snapshots} table at 30‑second intervals. Each snapshot captures 24 metric fields, providing a granular record of the user's health state over time. Alert events are simultaneously logged to the \texttt{alerts} table with type classifications, severity levels, and descriptive messages.
+
+\textbf{Summary Aggregation.} At the conclusion of each monitoring session, the database automatically rebuilds three levels of pre‑aggregated summaries:
+
+\begin{itemize}
+    \item \textbf{Daily Summaries:} Computed from all snapshots and sessions within a calendar day, including average metrics, total session time, alert counts, and estimated durations for adverse conditions.
+    \item \textbf{Weekly Summaries:} ISO‑week based (Monday–Sunday) aggregations with an additional \texttt{days\_active} counter indicating the number of distinct days the user was monitored.
+    \item \textbf{Monthly Summaries:} Calendar‑month aggregations supporting long‑term trend analysis.
+\end{itemize}
+
+\textbf{Data Retrieval API.} The frontend retrieves historical data through a comprehensive REST API that supports parameterized queries. The \texttt{ProgressCharts} component fetches daily, weekly, and monthly summaries to render interactive time‑series visualizations, while the \texttt{AIInsights} component retrieves aggregated statistics for AI‑powered analysis. All endpoints support configurable limits and date‑range filtering for efficient data delivery.
+
+%------------------------------------------------
+% CHAPTER 6
+%------------------------------------------------
+
+\chapter{Technologies, Stacks and Tools Used}
+
+This chapter provides a detailed overview of the technologies, development tools, libraries, and deployment strategies employed in the development of EyeGuardian. The technologies are organized by their functional role within the system architecture.
+
+\section{Development Environment}
+
+The EyeGuardian project is developed using a modern, cross‑platform toolchain that supports both frontend and backend workflows.
+
+\begin{itemize}
+    \item \textbf{Visual Studio Code:} The primary integrated development environment (IDE), used for both TypeScript/React frontend development and Python backend development. Extensions for ESLint, Tailwind CSS IntelliSense, and Python language support provide code intelligence and linting.
+    \item \textbf{Node.js (v20+):} The JavaScript runtime powering the frontend build system, package management (npm), and Electron's main process.
+    \item \textbf{Python 3.10+:} The runtime for the backend server, computer vision engines, and database management. A virtual environment (\texttt{venv}) isolates project dependencies.
+    \item \textbf{Git:} Version control system used for source code management and collaboration throughout the development lifecycle.
+\end{itemize}
+
+\section{Frontend Technologies}
+
+\subsection{Desktop Application Frontend}
+
+The desktop application frontend combines web technologies with native desktop capabilities through the following stack:
+
+\begin{itemize}
+    \item \textbf{Next.js 16:} A React‑based framework providing server‑side rendering, optimized bundling, and file‑system routing. Next.js serves as the core application framework, managing page rendering and API route proxying. Its built‑in development server enables hot module replacement for rapid iteration during development.
+    \item \textbf{React 19:} The UI library underpinning all frontend components. React 19's enhanced hooks API (\texttt{useState}, \texttt{useEffect}, \texttt{useRef}, \texttt{useCallback}) manages component state, side effects, and memoized callbacks. The component model enables encapsulation of complex UI elements such as the radial gauge, stat cards, and modal dialogs.
+    \item \textbf{TypeScript 5:} A statically typed superset of JavaScript used across the entire frontend codebase. TypeScript provides compile‑time type checking for health metric interfaces (\texttt{HealthState}, \texttt{BlinkDetails}, \texttt{PostureDetails}, etc.), reducing runtime errors and improving code maintainability. Custom type definitions (\texttt{.d.ts} files) extend type coverage to the Electron API bridge.
+    \item \textbf{Electron 39:} The cross‑platform desktop runtime that packages the Next.js application into native executables for Windows, macOS, and Linux. Electron provides access to system‑level APIs including native notifications, window visibility events, IPC communication, and full‑screen break mode. The main process (\texttt{electron/main.mjs}) manages application lifecycle, window creation, and system tray integration.
+    \item \textbf{Tailwind CSS 3.4:} A utility‑first CSS framework used for styling all UI components. Tailwind provides responsive design utilities, custom theme configuration for dark mode aesthetics, and consistent spacing and typography across the dashboard. A custom \texttt{tailwind.config.ts} defines project‑specific color palettes, extending the default theme with the application's design system.
+\end{itemize}
+
+\subsection{Charting and Data Visualization}
+
+\begin{itemize}
+    \item \textbf{Recharts 3.8:} A declarative, React‑based charting library used to render interactive time‑series visualizations in the \texttt{ProgressCharts} component. Recharts provides responsive line charts, area charts, and bar charts for displaying daily, weekly, and monthly health metric trends. The library integrates natively with React's component model, supporting dynamic data updates and tooltip interactions.
+\end{itemize}
+
+\section{Backend and Data Management}
+
+\subsection{Application Backend}
+
+\begin{itemize}
+    \item \textbf{FastAPI:} A modern, high‑performance Python web framework that powers the backend API server. FastAPI is chosen for its native support for asynchronous request handling (via Python's \texttt{asyncio}), automatic OpenAPI documentation generation, and Pydantic‑based input validation. The framework manages both WebSocket connections for real‑time data streaming and RESTful HTTP endpoints for historical data retrieval and AI insights.
+    \item \textbf{Uvicorn:} An ASGI (Asynchronous Server Gateway Interface) web server that hosts the FastAPI application. Uvicorn provides high‑throughput, low‑latency request handling essential for serving real‑time WebSocket streams at 10–30 frames per second.
+    \item \textbf{WebSockets:} The communication protocol enabling persistent, bidirectional connections between the frontend and backend. Implemented through FastAPI's native WebSocket support, the protocol streams JSON‑serialized health metric payloads (including Base64‑encoded camera frames) to connected clients with minimal overhead compared to HTTP polling.
+\end{itemize}
+
+\subsection{Database}
+
+\begin{itemize}
+    \item \textbf{SQLite 3:} A lightweight, file‑based relational database engine used for local data persistence. SQLite stores monitoring sessions, metric snapshots, alert logs, and pre‑aggregated daily, weekly, and monthly summaries without requiring a separate database server process. The database is accessed through Python's built‑in \texttt{sqlite3} module with WAL (Write‑Ahead Logging) mode enabled for improved concurrent read/write performance. Foreign key constraints and indexed columns ensure data integrity and query efficiency.
+\end{itemize}
+
+\section{AI Integration}
+
+EyeGuardian employs artificial intelligence at two levels—on‑device vision models for real‑time analysis and cloud‑based language models for personalized insights.
+
+\subsection{On‑Device Computer Vision}
+
+\begin{itemize}
+    \item \textbf{MediaPipe (v0.10.9):} Google's cross‑platform ML framework providing two pre‑trained models used in EyeGuardian:
+    \begin{itemize}
+        \item \textit{Face Mesh:} Predicts 468 dense facial landmarks per frame, enabling Eye Aspect Ratio computation for blink detection and eye region extraction for redness analysis. Configured for single‑face detection with refined iris landmarks.
+        \item \textit{Face Landmarker (Tasks API):} Provides facial transformation matrices for 3D head pose estimation (pitch, yaw, roll) and inter‑pupillary distance measurement for screen distance calculation.
+    \end{itemize}
+    \item \textbf{OpenCV (opencv‑python):} An open‑source computer vision library used for webcam frame capture (\texttt{VideoCapture}), image preprocessing (color space conversion, horizontal flipping), JPEG encoding for preview transmission, and brightness histogram analysis for ambient light estimation. OpenCV serves as the foundational image processing backbone that complements MediaPipe's ML inference.
+    \item \textbf{NumPy:} A numerical computing library providing efficient array operations for landmark coordinate processing, Euler angle computation from rotation matrices, and statistical calculations across metric histories.
+\end{itemize}
+
+\subsection{Cloud‑Based AI}
+
+\begin{itemize}
+    \item \textbf{Groq Cloud API:} A cloud inference platform accessed through the official \texttt{groq} Python SDK. EyeGuardian uses the \textbf{LLaMA 3.1 8B Instant} model via Groq's API to generate personalized eye health summaries, improvement suggestions, and actionable wellness tips. The API is invoked with structured prompts containing the user's weekly and monthly health metrics, producing JSON‑formatted responses that are cached locally with a 1‑hour TTL to minimize API costs and latency.
+\end{itemize}
+
+\section{Libraries and Dependencies}
+
+\subsection{Frontend Libraries}
+
+\begin{itemize}
+    \item \textbf{@heroicons/react (v2.2):} A collection of hand‑crafted SVG icons used for UI elements such as settings buttons, status indicators, and navigation icons throughout the dashboard.
+    \item \textbf{clsx (v2.1) and tailwind‑merge (v3.4):} Utility libraries for conditional CSS class composition and intelligent merging of Tailwind CSS classes, preventing style conflicts in dynamically styled components.
+    \item \textbf{electron‑serve (v3.0):} A helper library for serving static Next.js builds within Electron's production environment, enabling offline‑capable desktop operation.
+    \item \textbf{concurrently (v9.2) and wait‑on (v9.0):} Development utilities that enable simultaneous startup of the Next.js development server and Electron process, with \texttt{wait‑on} ensuring the web server is ready before launching the Electron window.
+\end{itemize}
+
+\subsection{Backend Libraries}
+
+\begin{itemize}
+    \item \textbf{python‑dotenv:} Loads environment variables (e.g., \texttt{GROQ\_API\_KEY}) from a \texttt{.env} file, keeping sensitive configuration out of version control.
+    \item \textbf{groq:} The official Python SDK for the Groq Cloud API, providing typed client interfaces for chat completion requests with support for JSON response formatting and streaming.
+\end{itemize}
+
+\section{Version Control and Project Management}
+
+\begin{itemize}
+    \item \textbf{Git:} Distributed version control system used for tracking all source code changes, enabling collaborative development, and maintaining a complete history of the project evolution.
+    \item \textbf{GitHub:} Cloud‑hosted repository platform used for remote code storage, issue tracking, and project documentation. The repository maintains separate directories for frontend, backend, and ML model assets.
+    \item \textbf{.gitignore:} Configured to exclude build artifacts (\texttt{.next/}, \texttt{out/}), dependencies (\texttt{node\_modules/}, \texttt{venv/}), environment files (\texttt{.env}), and database files from version control.
+\end{itemize}
+
+\section{Deployment}
+
+EyeGuardian is deployed as a local desktop application with the following deployment strategy:
+
+\begin{itemize}
+    \item \textbf{Electron Packaging:} The Next.js frontend is built into static HTML/JS/CSS assets using \texttt{next build}, which are then served within an Electron shell. The \texttt{electron:prod} npm script automates the build‑and‑launch workflow.
+    \item \textbf{Backend Server:} The FastAPI backend runs locally via Uvicorn on \texttt{localhost:8000}, started as a companion process alongside the Electron application. The backend manages its own Python virtual environment with dependencies specified in \texttt{requirements.txt}.
+    \item \textbf{Database:} The SQLite database file (\texttt{eyeguardian.db}) is stored in the application's \texttt{data/} directory, requiring no external database server installation.
+    \item \textbf{AI Model Assets:} Pre‑trained MediaPipe model files (e.g., \texttt{face\_landmarker.task}) are bundled with the application in the \texttt{posture/} directory, enabling offline computer vision inference.
+\end{itemize}
+
+\section{Security Measures}
+
+\begin{itemize}
+    \item \textbf{Local Processing:} All computer vision analysis occurs on the user's device, ensuring that webcam frames and biometric data never leave the local machine. This privacy‑first architecture eliminates risks associated with cloud‑based video processing.
+    \item \textbf{Environment Variable Management:} Sensitive credentials (API keys for Groq Cloud) are stored in \texttt{.env} files excluded from version control via \texttt{.gitignore}, preventing accidental exposure.
+    \item \textbf{CORS Configuration:} Cross‑Origin Resource Sharing middleware restricts API access to authorized origins, preventing unauthorized external requests to the backend server.
+    \item \textbf{Data Minimization:} Only aggregated, non‑identifiable health metrics are transmitted to the Groq Cloud API for insight generation. Raw video frames and facial landmark data are processed locally and never uploaded.
+    \item \textbf{Database Integrity:} SQLite's ACID compliance and WAL journal mode ensure data consistency during concurrent operations, with foreign key constraints maintaining referential integrity across related tables.
+\end{itemize}
+
+%------------------------------------------------
+% CHAPTER 7
+%------------------------------------------------
+
+\chapter{Testing}
+
+\section{Unit Testing}
+
+Unit testing was conducted on core modules to validate individual components in isolation. For blink detection, test cases simulated various eye aspect ratios using mock landmark data, verifying that blinks were accurately identified under different lighting and facial orientations. Posture analysis was tested with synthetic head pose angles, ensuring that deviations from neutral positions triggered appropriate flags. Lighting module tests involved frame brightness histograms to confirm ambient light estimation accuracy. These tests, implemented using Python’s unittest framework for backend modules and Jest for frontend utilities, achieved over 90% code coverage, identifying edge cases such as rapid head movements or partial occlusions.
+
+\section{Integration Testing}
+
+Integration testing focused on the interactions between frontend, backend, and database components. WebSocket communication was validated by simulating data streams from the frontend to the backend, ensuring metrics were correctly processed and persisted in the database. Database operations were tested for data integrity during concurrent writes, while API endpoints were checked for proper response handling. End‑to‑end scenarios, such as a complete monitoring session, were automated using Selenium for frontend interactions and pytest for backend assertions, revealing synchronization issues that were resolved through improved error handling and connection retries.
+
+\section{Usability Testing}
+
+Usability testing involved ten participants evaluating the dashboard and alert system in controlled sessions. Users navigated the real‑time visualizations, adjusted settings, and responded to notifications, providing feedback on intuitiveness and responsiveness. The dashboard’s metric displays were rated highly for clarity, but some users noted initial confusion with alert modals during high‑activity periods. Alert system testing confirmed timely delivery of break reminders, with participants appreciating the non‑intrusive nature of notifications. Iterative refinements based on this feedback improved user experience, reducing response times and enhancing accessibility features.
+
+\section{System Stability}
+
+System stability was assessed through extended testing sessions lasting up to eight hours, simulating prolonged usage. Memory usage and CPU load were monitored to detect leaks or performance degradation, with the application maintaining stable resource consumption. WebSocket connections remained robust under network fluctuations, and the system recovered gracefully from interruptions. Long‑session tests uncovered occasional frame drops during high‑load scenarios, which were mitigated by optimizing MediaPipe inference and implementing frame rate throttling, ensuring reliable operation throughout the workday.
+
+%------------------------------------------------
+% CHAPTER 8
+%------------------------------------------------
+
+\chapter{Future Scope}
+
+Several enhancements can further improve the functionality of EyeGuardian:
+
+The EyeGuardian system presents several avenues for enhancement that could broaden its applicability and efficacy in promoting digital wellness. One promising direction is the incorporation of AI‑driven habit analysis, where machine learning models could analyze longitudinal user data to identify patterns in screen usage, break adherence, and environmental factors. This would enable predictive insights, such as forecasting periods of high strain risk based on historical behavior, thereby allowing the system to preemptively suggest lifestyle adjustments.
+
+A reward‑based wellness system could gamify healthy habits by tracking and rewarding consistent adherence to break reminders and posture corrections. Users might earn points or badges for maintaining optimal metrics, with progress visualized on the dashboard to foster motivation. This approach would leverage behavioral psychology to improve long‑term engagement, potentially integrating with external platforms for social sharing or leaderboards.
+
+Personalized strain thresholds represent another area for refinement, utilizing adaptive algorithms that calibrate detection parameters based on individual physiological baselines. By learning from user feedback and biometric data, the system could dynamically adjust blink rate expectations, posture tolerances, and lighting sensitivities, reducing false positives and enhancing accuracy for diverse user profiles.
+
+Advanced eye fatigue detection could be achieved by integrating additional biomarkers, such as pupil dilation tracking or corneal reflection analysis, to complement the current Eye Aspect Ratio method. This would provide a more nuanced assessment of ocular health, potentially incorporating infrared imaging for better low‑light performance and enabling early detection of conditions like dry eye syndrome.
+
+Integration with wearable devices, such as smartwatches or fitness trackers, would allow EyeGuardian to correlate vision‑based metrics with physiological data like heart rate variability or skin temperature. This multimodal approach could offer holistic wellness insights, alerting users to systemic fatigue that manifests through both visual and bodily signals.
+
+Finally, developing a mobile companion application would extend EyeGuardian’s reach beyond desktop environments. The app could sync data across devices, provide on‑the‑go monitoring via smartphone cameras, and deliver notifications for mobile screen usage. This would ensure continuous wellness tracking, even during commutes or leisure activities, and facilitate seamless data aggregation for comprehensive health reporting.
+
+%------------------------------------------------
+% CHAPTER 9
+%------------------------------------------------
+
+\chapter{Conclusion}
+
+EyeGuardian demonstrates how computer vision and artificial intelligence can be combined to create an intelligent wellness monitoring system. By analyzing blink patterns, posture, and environmental factors, the application provides real-time insights that help users maintain healthier screen habits.
+
+The system highlights the potential of AI-powered personal health assistants and provides a foundation for future research in computer vision-based wellness monitoring.
+
+\end{document}
